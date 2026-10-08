@@ -22,3 +22,18 @@ This record captures the Day 01 decision set for Saved2ServeConnect. It compleme
 - Data retention will be limited to the minimum time needed for review, follow-up, and operational support.
 - No long-term retention is planned for raw sensitive submissions beyond the business need.
 - Review and follow-up records must remain subject to consent and admin access controls.
+
+## Threat and security decisions
+
+- HTTPS and TLS enforcement will be required for all public traffic and API access.
+- IAM, Cognito, and least-privilege controls will be used for service-to-service access.
+- SQS and DLQ monitoring will be used for retryable background processing and failure visibility.
+- Log redaction will protect personal data, contact details, and consent state.
+- Public APIs will reject precise location payloads and prevent direct exposure of admin-only records.
+
+## Release decisions
+
+- The MVP will release only the minimal public feature set needed for area-code discovery and private review workflows.
+- No public publishing of testimonies or engagement records will be enabled before review.
+- Release approval will require a privacy review and confirmation that admin-only access controls are in place.
+- Launch readiness will require verification that the architecture and acceptance scenarios remain consistent with the MVP boundaries.
