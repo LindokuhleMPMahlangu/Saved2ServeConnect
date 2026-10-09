@@ -24,8 +24,11 @@ This Day 02 deliverable establishes the Java 21 Maven project baseline for Saved
 
 ## Review evidence
 
-The project includes automated tests that verify the validation rules and MVP privacy constraints. The default validation command is:
+The project includes automated tests that verify the validation rules and MVP privacy constraints. The default validation and packaging commands are:
 
 ```bash
 mvn test
+mvn package
 ```
+
+The package step confirms the Java 21 Maven project can compile and assemble a runnable JAR while preserving the privacy-first MVP boundaries.
