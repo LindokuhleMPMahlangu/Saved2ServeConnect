@@ -1,5 +1,21 @@
-target/
-.idea/
+# Build output
+/target/
+**/target/
+
+# IDE/editor files
+/.idea/
 .vscode/
 *.iml
+*.class
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Local environment and logs
+*.log
+.env
+.env.*
+
+# Maven temporary files
+.mvn/timing.properties
