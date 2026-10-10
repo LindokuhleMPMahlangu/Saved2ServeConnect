@@ -62,6 +62,49 @@ class InterestEngagementRecordsTest {
         assertFalse(containsField(Engagement.class, "longitude"));
     }
 
+    @Test
+    void interestRequestUsesExplicitAllowlistOnly() {
+        assertEquals(Set.of("name", "email", "areaCode", "phone", "consent", "source"), InterestRequest.ALLOWED_FIELDS);
+        assertFalse(InterestRequest.ALLOWED_FIELDS.contains("fullAddress"));
+        assertFalse(InterestRequest.ALLOWED_FIELDS.contains("latitude"));
+        assertFalse(InterestRequest.ALLOWED_FIELDS.contains("longitude"));
+        assertFalse(InterestRequest.ALLOWED_FIELDS.contains("status"));
+
+        InterestRequest request = new InterestRequest(
+                "Morgan Lee",
+                "morgan@example.com",
+                "10001",
+                "5551112233",
+                true,
+                "qr-code"
+        );
+
+        assertEquals("Morgan Lee", request.name());
+        assertEquals("10001", request.areaCode());
+    }
+
+    @Test
+    void engagementRequestUsesExplicitAllowlistOnly() {
+        assertEquals(Set.of("name", "email", "areaCode", "phone", "consent", "type", "message"), EngagementRequest.ALLOWED_FIELDS);
+        assertFalse(EngagementRequest.ALLOWED_FIELDS.contains("fullAddress"));
+        assertFalse(EngagementRequest.ALLOWED_FIELDS.contains("latitude"));
+        assertFalse(EngagementRequest.ALLOWED_FIELDS.contains("longitude"));
+        assertFalse(EngagementRequest.ALLOWED_FIELDS.contains("status"));
+
+        EngagementRequest request = new EngagementRequest(
+                "Jordan Lee",
+                "jordan@example.com",
+                "20001",
+                "5559876543",
+                true,
+                EngagementType.HELP_REQUEST,
+                "I need prayer support for a new volunteer team."
+        );
+
+        assertEquals(EngagementType.HELP_REQUEST, request.type());
+        assertEquals("I need prayer support for a new volunteer team.", request.message());
+    }
+
     private static boolean containsField(Class<?> type, String fieldName) {
         for (Field field : type.getDeclaredFields()) {
             if (field.getName().equals(fieldName)) {
