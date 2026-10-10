@@ -29,10 +29,11 @@ This repository includes the core Day 02 baseline and supporting artifacts:
 
 ## Day 03 deliverables included
 
-The repository now includes immutable privacy-conscious domain records for public submission flows:
+The repository now includes immutable privacy-conscious domain records and explicit request DTOs for public submission flows:
 
 - Interest record: stores voluntary registration intent with consent, area-code matching, and a minimal contact footprint
 - Engagement record: stores pending-review leadership submissions while blocking full-address and precise-location data
+- InterestRequest and EngagementRequest DTOs define explicit field allowlists and avoid public payload drift beyond the approved MVP schema
 - Supporting enums for engagement type and review status keep the model explicit and reviewable
 
 These records intentionally reject full residential addresses, precise coordinates, and non-consented submissions to stay within the Save2Serve MVP boundaries.
