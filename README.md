@@ -27,6 +27,16 @@ This repository includes the core Day 02 baseline and supporting artifacts:
 - privacy-aware validation logic and acceptance scenarios
 - review, retention, threat, and release decision records
 
+## Day 03 deliverables included
+
+The repository now includes immutable privacy-conscious domain records for public submission flows:
+
+- Interest record: stores voluntary registration intent with consent, area-code matching, and a minimal contact footprint
+- Engagement record: stores pending-review leadership submissions while blocking full-address and precise-location data
+- Supporting enums for engagement type and review status keep the model explicit and reviewable
+
+These records intentionally reject full residential addresses, precise coordinates, and non-consented submissions to stay within the Save2Serve MVP boundaries.
+
 ## Java and dependency baseline
 
 - Java 21
