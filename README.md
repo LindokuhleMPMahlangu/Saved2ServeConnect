@@ -45,9 +45,10 @@ This repository now includes the DynamoDB design notes for the Save2Serve MVP ac
 - single-table layout for interests and engagement records
 - primary keys, GSI definitions, and review-queue access patterns
 - area-code-based lookup strategy and email-hash duplicate detection
+- domain-oriented `InterestRepository` and `EngagementRepository` contracts with no AWS SDK types
 - privacy-preserving design decisions that avoid full address and GPS storage
 
-The complete write-up is in docs/day-04-dynamodb-keys-indexes-and-access-patterns.md and stays aligned with the privacy-first MVP boundaries.
+The complete write-up is in [docs/day-04-dynamodb-keys-indexes-and-access-patterns.md](docs/day-04-dynamodb-keys-indexes-and-access-patterns.md) and stays aligned with the privacy-first MVP boundaries. The interfaces define the application-facing persistence contract; a DynamoDB adapter remains a separate implementation concern.
 
 ## Java and dependency baseline
 
