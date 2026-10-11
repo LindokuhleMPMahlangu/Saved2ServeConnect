@@ -10,5 +10,7 @@ public interface EngagementRepository {
 
     List<Engagement> findByStatus(SubmissionStatus status);
 
+    Page<Engagement> findByStatus(SubmissionStatus status, int pageSize, String cursor);
+
     List<Engagement> findByAreaCodeAndStatus(String areaCode, SubmissionStatus status);
 }
