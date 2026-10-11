@@ -16,6 +16,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <aws.lambda.core.version>1.2.3</aws.lambda.core.version>
         <aws.lambda.events.version>3.14.0</aws.lambda.events.version>
+        <aws.sdk.version>2.30.31</aws.sdk.version>
         <jackson.version>2.18.2</jackson.version>
         <junit.jupiter.version>5.11.4</junit.jupiter.version>
         <mockito.version>5.14.2</mockito.version>
@@ -31,6 +32,16 @@
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-lambda-java-events</artifactId>
             <version>${aws.lambda.events.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>dynamodb</artifactId>
+            <version>${aws.sdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>kms</artifactId>
+            <version>${aws.sdk.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
