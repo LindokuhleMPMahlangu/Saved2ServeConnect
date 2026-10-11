@@ -6,9 +6,9 @@ import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.Page;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.DynamoDbException;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
@@ -19,7 +19,6 @@ import software.amazon.awssdk.services.kms.model.DecryptRequest;
 import software.amazon.awssdk.services.kms.model.DecryptResponse;
 import software.amazon.awssdk.services.kms.model.EncryptRequest;
 import software.amazon.awssdk.services.kms.model.EncryptResponse;
-import software.amazon.awssdk.services.kms.model.KmsException;
 
 import java.util.List;
 import java.util.Map;
@@ -171,13 +170,14 @@ class DynamoDbSaved2ServeRepositoryTest {
     @Test
     void dynamoDbQueryFailureIsPropagated() {
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
-        DynamoDbException awsFailure = DynamoDbException.builder().message("Unavailable").statusCode(503).build();
+        AwsServiceException awsFailure = AwsServiceException.builder()
+                .message("Unavailable").statusCode(503).build();
         when(dynamoDbClient.query(any(QueryRequest.class))).thenThrow(awsFailure);
         DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
                 dynamoDbClient, mock(KmsClient.class), "Saved2ServeRecords", "alias/test-email-key"
         );
 
-        DynamoDbException thrown = assertThrows(DynamoDbException.class,
+        AwsServiceException thrown = assertThrows(AwsServiceException.class,
                 () -> repository.findByStatus(SubmissionStatus.PENDING_REVIEW, 10, null));
 
         assertSame(awsFailure, thrown);
@@ -187,13 +187,14 @@ class DynamoDbSaved2ServeRepositoryTest {
     void kmsEncryptionFailurePreventsWriteAndIsPropagated() {
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
         KmsClient kmsClient = mock(KmsClient.class);
-        KmsException awsFailure = KmsException.builder().message("Access denied").statusCode(403).build();
+        AwsServiceException awsFailure = AwsServiceException.builder()
+                .message("Access denied").statusCode(403).build();
         when(kmsClient.encrypt(any(EncryptRequest.class))).thenThrow(awsFailure);
         DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
                 dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
         );
 
-        KmsException thrown = assertThrows(KmsException.class,
+        AwsServiceException thrown = assertThrows(AwsServiceException.class,
                 () -> repository.save(new Interest(
                         "A Person", "person@example.com", "10001", "", true, "landing-page"
                 )));
@@ -209,13 +210,14 @@ class DynamoDbSaved2ServeRepositoryTest {
         when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
                 .ciphertextBlob(SdkBytes.fromUtf8String("encrypted"))
                 .build());
-        DynamoDbException awsFailure = DynamoDbException.builder().message("Unavailable").statusCode(503).build();
+        AwsServiceException awsFailure = AwsServiceException.builder()
+                .message("Unavailable").statusCode(503).build();
         when(dynamoDbClient.putItem(any(PutItemRequest.class))).thenThrow(awsFailure);
         DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
                 dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
         );
 
-        DynamoDbException thrown = assertThrows(DynamoDbException.class,
+        AwsServiceException thrown = assertThrows(AwsServiceException.class,
                 () -> repository.save(new Interest(
                         "A Person", "person@example.com", "10001", "", true, "landing-page"
                 )));
@@ -227,7 +229,8 @@ class DynamoDbSaved2ServeRepositoryTest {
     void kmsDecryptionFailureIsPropagatedWhenMappingResults() {
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
         KmsClient kmsClient = mock(KmsClient.class);
-        KmsException awsFailure = KmsException.builder().message("Access denied").statusCode(403).build();
+        AwsServiceException awsFailure = AwsServiceException.builder()
+                .message("Access denied").statusCode(403).build();
         when(kmsClient.decrypt(any(DecryptRequest.class))).thenThrow(awsFailure);
         when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(
                 QueryResponse.builder().items(List.of(engagementItem("first"))).build()
@@ -236,7 +239,7 @@ class DynamoDbSaved2ServeRepositoryTest {
                 dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
         );
 
-        KmsException thrown = assertThrows(KmsException.class,
+        AwsServiceException thrown = assertThrows(AwsServiceException.class,
                 () -> repository.findByStatus(SubmissionStatus.PENDING_REVIEW, 10, null));
 
         assertSame(awsFailure, thrown);
