@@ -149,12 +149,30 @@ Why it matches the MVP:
 - Keep all public submissions in `PENDING_REVIEW` until an admin approves them.
 - Restrict review routes to authenticated admin access with Cognito/JWT checks.
 
-## Review evidence
-
-This design is intentionally aligned with the existing records and validation rules in the Java codebase, including the minimal field set and the requirement that submissions remain pending review until explicitly approved.
-
 ## Repository contracts
 
 The application-facing persistence boundary is defined in `com.saved2serve.repository` and depends only on the domain records and standard Java collection types. `InterestRepository` supports saving an interest, area-code lookup, and duplicate checks using an email hash. `EngagementRepository` supports saving submissions and querying by review status, optionally narrowed to an area code.
 
-These interfaces do not expose DynamoDB tables, keys, SDK request/response objects, or AWS client types. A future persistence adapter is responsible for translating these domain-oriented operations to DynamoDB, querying email hashes rather than raw email values for duplicate checks, and returning empty lists when a query has no matches. No AWS persistence implementation or SDK dependency is introduced by this deliverable.
+These interfaces do not expose DynamoDB tables, keys, SDK request/response objects, or AWS client types. `EngagementRepository` also provides a `Page<Engagement>` query accepting a page size and opaque cursor, so queue clients can fetch bounded pages without depending on AWS SDK types.
+
+## DynamoDB mapping and pagination
+
+`DynamoDbSaved2ServeRepository` implements both contracts using injected AWS SDK v2 DynamoDB and KMS clients. Table name and KMS key ID are constructor configuration, so credentials and clients continue to follow the AWS SDK credential/provider chain chosen by the application.
+
+Each write generates a UUID record ID and a fixed-width, nanosecond-precision UTC creation timestamp so lexical index ordering is chronological. Items use `PK = ENTITY#<recordId>` and `SK = TYPE#<entityType>#<createdAt>`. The index attributes are:
+
+| Index | Partition attribute | Sort attribute | Projection |
+|---|---|---|---|
+| `StatusCreatedAtIndex` | `GSI1PK = STATUS#<status>` | `GSI1SK = CREATED_AT#<createdAt>#<recordId>` | ALL |
+| `AreaCreatedAtIndex` | `GSI2PK = AREA#<areaCode>` | `GSI2SK = CREATED_AT#<createdAt>#<recordId>` | ALL |
+| `EmailHashIndex` | `GSI3PK = EMAIL_HASH#<sha256>` | `GSI3SK = ENTITY#<recordId>` | KEYS_ONLY |
+
+The ID suffix makes timestamps with equal values deterministic in index order. Email is encrypted/decrypted with the configured symmetric KMS key and an encryption context containing the record ID and entity type; values over KMS's 4-KiB plaintext limit are rejected. Only the ciphertext is persisted; trimmed, lowercase email is SHA-256 hashed for the duplicate lookup index. Raw email is not used in DynamoDB keys or stored as a plaintext attribute. Since area and status indexes return record fields, they require `ALL` projection; the duplicate check needs only index keys and uses `KEYS_ONLY`.
+
+The paginated status query uses `StatusCreatedAtIndex`, descending sort order, and a page size from 1 to 100. Its cursor encodes the DynamoDB `LastEvaluatedKey` as URL-safe Base64 JSON and must be treated as opaque by callers; pass the returned cursor unchanged to fetch the next page. An absent cursor means the first page, and a null `nextCursor` means there are no more results. The legacy list-returning status method drains all pages and should not be used for large review queues.
+
+Repository queries do not perform authorization. Queue and decrypted contact data must only be exposed through the authenticated admin/JWT-protected application routes. AWS IAM permissions should scope DynamoDB table/index access and KMS use to the service role and configured key.
+
+## Review evidence
+
+`DynamoDbRecordMapperTest` verifies KMS-backed email mapping, absence of plaintext email fields, and status/area/hash index attributes. `DynamoDbSaved2ServeRepositoryTest` verifies that status queue queries carry the returned exclusive-start key into the next page. The AWS clients are mocked; no live AWS account or data is required for tests.
