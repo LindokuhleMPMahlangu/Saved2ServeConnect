@@ -46,15 +46,17 @@ This repository now includes the DynamoDB design notes for the Save2Serve MVP ac
 - primary keys, GSI definitions, and review-queue access patterns
 - area-code-based lookup strategy and email-hash duplicate detection
 - domain-oriented `InterestRepository` and `EngagementRepository` contracts with no AWS SDK types
+- DynamoDB mapping with KMS-encrypted email and paginated status queue queries
 - privacy-preserving design decisions that avoid full address and GPS storage
 
-The complete write-up is in [docs/day-04-dynamodb-keys-indexes-and-access-patterns.md](docs/day-04-dynamodb-keys-indexes-and-access-patterns.md) and stays aligned with the privacy-first MVP boundaries. The interfaces define the application-facing persistence contract; a DynamoDB adapter remains a separate implementation concern.
+The complete write-up is in [docs/day-04-dynamodb-keys-indexes-and-access-patterns.md](docs/day-04-dynamodb-keys-indexes-and-access-patterns.md) and stays aligned with the privacy-first MVP boundaries. The interfaces define the AWS-SDK-independent application contract, implemented by a separate DynamoDB/KMS persistence adapter.
 
 ## Java and dependency baseline
 
 - Java 21
 - Maven 3.9+
 - AWS Lambda Java Core and Events
+- AWS SDK for Java 2.x DynamoDB and KMS clients
 - Jackson for JSON serialization
 - JUnit 5 and Mockito for testing
 
