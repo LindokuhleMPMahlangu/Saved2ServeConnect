@@ -175,4 +175,4 @@ Repository queries do not perform authorization. Queue and decrypted contact dat
 
 ## Review evidence
 
-`DynamoDbRecordMapperTest` verifies KMS-backed email mapping, absence of plaintext email fields, and status/area/hash index attributes. `DynamoDbSaved2ServeRepositoryTest` verifies that status queue queries carry the returned exclusive-start key into the next page. The AWS clients are mocked; no live AWS account or data is required for tests.
+`DynamoDbRecordMapperTest` verifies KMS-backed email mapping, absence of plaintext email fields, and status/area/hash index attributes. `DynamoDbSaved2ServeRepositoryTest` verifies the area, status, and email-hash query requests; mapped and empty results; continuation-key handling; page-size validation; and propagation of DynamoDB and KMS failures (including preventing a write when email encryption fails). AWS clients are mocked, so tests require no live AWS account, credentials, or data.
