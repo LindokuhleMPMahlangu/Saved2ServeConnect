@@ -152,3 +152,9 @@ Why it matches the MVP:
 ## Review evidence
 
 This design is intentionally aligned with the existing records and validation rules in the Java codebase, including the minimal field set and the requirement that submissions remain pending review until explicitly approved.
+
+## Repository contracts
+
+The application-facing persistence boundary is defined in `com.saved2serve.repository` and depends only on the domain records and standard Java collection types. `InterestRepository` supports saving an interest, area-code lookup, and duplicate checks using an email hash. `EngagementRepository` supports saving submissions and querying by review status, optionally narrowed to an area code.
+
+These interfaces do not expose DynamoDB tables, keys, SDK request/response objects, or AWS client types. A future persistence adapter is responsible for translating these domain-oriented operations to DynamoDB, querying email hashes rather than raw email values for duplicate checks, and returning empty lists when a query has no matches. No AWS persistence implementation or SDK dependency is introduced by this deliverable.
