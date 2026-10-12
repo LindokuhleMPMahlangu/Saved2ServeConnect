@@ -4,6 +4,7 @@ import java.util.Objects;
 import java.util.Set;
 
 public record InterestRequest(
+        String idempotencyKey,
         String name,
         String email,
         String areaCode,
@@ -12,6 +13,7 @@ public record InterestRequest(
         String source
 ) {
     public static final Set<String> ALLOWED_FIELDS = Set.of(
+            "idempotencyKey",
             "name",
             "email",
             "areaCode",
@@ -21,12 +23,16 @@ public record InterestRequest(
     );
 
     public InterestRequest {
+        idempotencyKey = normalize(idempotencyKey);
         name = normalize(name);
         email = normalize(email);
         areaCode = normalize(areaCode);
         phone = normalize(phone);
         source = normalize(source);
 
+        if (idempotencyKey.isBlank() || idempotencyKey.length() > 128) {
+            throw new IllegalArgumentException("A valid idempotency key is required.");
+        }
         if (name.isBlank()) {
             throw new IllegalArgumentException("Name is required.");
         }
