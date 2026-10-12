@@ -67,7 +67,10 @@ public final class RegistrationService {
                 idempotencyKeyHash,
                 requestFingerprint
         );
-        return registrationResult(saveResult != InterestRepository.IdempotentSaveResult.IDEMPOTENCY_KEY_CONFLICT);
+        return switch (saveResult) {
+            case CREATED, REPLAYED -> registrationResult(true);
+            case IDEMPOTENCY_KEY_CONFLICT -> registrationResult(false);
+        };
     }
 
     private static Saved2ServeValidator.ValidationResult registrationResult(boolean accepted) {
