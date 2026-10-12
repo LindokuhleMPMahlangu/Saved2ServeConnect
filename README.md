@@ -53,7 +53,7 @@ The complete write-up is in [docs/day-04-dynamodb-keys-indexes-and-access-patter
 
 ## Day 05 deliverables included
 
-The registration application service is covered by deterministic unit tests using injected repository and email-hashing dependencies. The tests verify consent enforcement, accepted registrations, duplicate rejection, invalid-email rejection before persistence, and hashing only after input validation. Production wiring can inject the shared email hasher used by the DynamoDB mapper, keeping duplicate checks aligned with its normalized SHA-256 lookup index. The service stores only allowlisted interest fields and introduces no address, GPS, clock, or random dependencies.
+The registration application service is covered by deterministic unit tests using injected repository and hashing dependencies. Normalized email hashes drive duplicate checks, while callers supply an idempotency key to safely replay the same request after an uncertain response. DynamoDB stores only hashes, fingerprints, and the allowlisted interest fields; conditional writes prevent a retry from creating a second registration, and reusing a key for changed request data is rejected. The flow introduces no address, GPS, clock, or random dependencies at the service boundary.
 
 ## Java and dependency baseline
 
