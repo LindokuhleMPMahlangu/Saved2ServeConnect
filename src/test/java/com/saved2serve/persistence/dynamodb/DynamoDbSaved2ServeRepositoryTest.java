@@ -4,6 +4,7 @@ import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.Page;
+import com.saved2serve.util.EmailHasher;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
@@ -263,7 +264,7 @@ class DynamoDbSaved2ServeRepositoryTest {
         ArgumentCaptor<PutItemRequest> request = ArgumentCaptor.forClass(PutItemRequest.class);
         verify(dynamoDbClient).putItem(request.capture());
         assertEquals("Saved2ServeRecords", request.getValue().tableName());
-        assertEquals("EMAIL_HASH#" + DynamoDbRecordMapper.sha256("person@example.com"),
+        assertEquals("EMAIL_HASH#" + EmailHasher.sha256("person@example.com"),
                 request.getValue().item().get("GSI3PK").s());
         assertFalse(request.getValue().item().containsKey("email"));
         assertEquals("encrypted", request.getValue().item().get("emailCiphertext").b().asUtf8String());
