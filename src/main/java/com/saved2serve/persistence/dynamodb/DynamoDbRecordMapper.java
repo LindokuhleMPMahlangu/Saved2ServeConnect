@@ -53,6 +53,28 @@ public final class DynamoDbRecordMapper {
         return Map.copyOf(item);
     }
 
+    public Map<String, AttributeValue> toIdempotentItem(
+            Interest interest,
+            String idempotencyKeyHash,
+            String requestFingerprint
+    ) {
+        requireNonBlank(idempotencyKeyHash, "idempotencyKeyHash");
+        requireNonBlank(requestFingerprint, "requestFingerprint");
+        Map<String, AttributeValue> item = new HashMap<>(toItem(interest));
+        item.put(PK, string("IDEMPOTENCY#" + idempotencyKeyHash));
+        item.put(SK, string("REGISTRATION"));
+        item.put("idempotencyKeyHash", string(idempotencyKeyHash));
+        item.put("requestFingerprint", string(requestFingerprint));
+        return Map.copyOf(item);
+    }
+
+    static Map<String, AttributeValue> idempotencyKey(String idempotencyKeyHash) {
+        return Map.of(
+                PK, string("IDEMPOTENCY#" + requireNonBlank(idempotencyKeyHash, "idempotencyKeyHash")),
+                SK, string("REGISTRATION")
+        );
+    }
+
     public Map<String, AttributeValue> toItem(Engagement engagement) {
         Objects.requireNonNull(engagement, "engagement must not be null");
         String recordId = UUID.randomUUID().toString();
