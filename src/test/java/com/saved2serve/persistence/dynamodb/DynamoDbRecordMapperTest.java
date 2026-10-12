@@ -71,6 +71,27 @@ class DynamoDbRecordMapperTest {
     }
 
     @Test
+    void idempotentInterestMappingUsesHashedKeyAndRequestFingerprint() {
+        KmsClient kmsClient = mockKmsClient();
+        DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
+
+        Map<String, AttributeValue> item = mapper.toIdempotentItem(
+                new Interest("A Person", EMAIL, "10001", "", true, "landing-page"),
+                "idempotency-hash",
+                "request-fingerprint"
+        );
+
+        assertEquals("IDEMPOTENCY#idempotency-hash", item.get("PK").s());
+        assertEquals("REGISTRATION", item.get("SK").s());
+        assertEquals("idempotency-hash", item.get("idempotencyKeyHash").s());
+        assertEquals("request-fingerprint", item.get("requestFingerprint").s());
+        assertFalse(item.containsKey("idempotencyKey"));
+        assertFalse(item.containsKey("email"));
+        assertEquals("AREA#10001", item.get("GSI2PK").s());
+        assertEquals("EMAIL_HASH#" + EmailHasher.sha256(EMAIL), item.get("GSI3PK").s());
+    }
+
+    @Test
     void engagementMappingIndexesStatusAndMapsBackToDomainRecord() {
         KmsClient kmsClient = mockKmsClient();
         DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
