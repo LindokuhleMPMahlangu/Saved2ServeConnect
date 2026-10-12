@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.kms.model.EncryptRequest;
 import software.amazon.awssdk.services.kms.model.EncryptResponse;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,6 +32,7 @@ import static org.mockito.Mockito.when;
 class DynamoDbRecordMapperTest {
     private static final String EMAIL = "Person@Example.com";
     private static final byte[] ENCRYPTED_EMAIL = new byte[]{1, 2, 3, 4};
+    private static final Instant CONSENTED_AT = Instant.parse("2026-10-24T10:15:30Z");
 
     @Test
     void interestMappingEncryptsEmailAndUsesHashOnlyForLookupKeys() {
@@ -38,12 +40,14 @@ class DynamoDbRecordMapperTest {
         DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
 
         Map<String, AttributeValue> item = mapper.toItem(new Interest(
-                "A Person", EMAIL, "10001", "5551234567", true, "landing-page"
+                "A Person", EMAIL, "10001", "5551234567", true, "landing-page", CONSENTED_AT
         ));
         Interest restored = mapper.toInterest(item);
 
         assertFalse(item.containsKey("email"));
         assertEquals(EMAIL, restored.email());
+        assertEquals(CONSENTED_AT, restored.consentedAt());
+        assertEquals(CONSENTED_AT.toString(), item.get("consentedAt").s());
         assertEquals("INTEREST", item.get("entityType").s());
         assertTrue(item.get("createdAt").s().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{9}Z"));
         assertEquals("AREA#10001", item.get("GSI2PK").s());
@@ -63,7 +67,7 @@ class DynamoDbRecordMapperTest {
         KmsClient kmsClient = mockKmsClient();
         DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
         Interest interest = new Interest(
-                "A Person", "a".repeat(4097), "10001", "", true, "landing-page"
+                "A Person", "a".repeat(4097), "10001", "", true, "landing-page", CONSENTED_AT
         );
 
         assertThrows(IllegalArgumentException.class, () -> mapper.toItem(interest));
@@ -76,7 +80,7 @@ class DynamoDbRecordMapperTest {
         DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
 
         Map<String, AttributeValue> item = mapper.toIdempotentItem(
-                new Interest("A Person", EMAIL, "10001", "", true, "landing-page"),
+                new Interest("A Person", EMAIL, "10001", "", true, "landing-page", CONSENTED_AT),
                 "idempotency-hash",
                 "request-fingerprint"
         );
@@ -85,6 +89,7 @@ class DynamoDbRecordMapperTest {
         assertEquals("REGISTRATION", item.get("SK").s());
         assertEquals("idempotency-hash", item.get("idempotencyKeyHash").s());
         assertEquals("request-fingerprint", item.get("requestFingerprint").s());
+        assertEquals(CONSENTED_AT.toString(), item.get("consentedAt").s());
         assertFalse(item.containsKey("idempotencyKey"));
         assertFalse(item.containsKey("email"));
         assertEquals("AREA#10001", item.get("GSI2PK").s());
