@@ -3,6 +3,7 @@ package com.saved2serve.persistence.dynamodb;
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
+import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.repository.Page;
 import com.saved2serve.util.EmailHasher;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,9 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
+import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
@@ -268,6 +272,104 @@ class DynamoDbSaved2ServeRepositoryTest {
                 request.getValue().item().get("GSI3PK").s());
         assertFalse(request.getValue().item().containsKey("email"));
         assertEquals("encrypted", request.getValue().item().get("emailCiphertext").b().asUtf8String());
+    }
+
+    @Test
+    void idempotencyFingerprintLookupUsesStronglyConsistentRead() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        when(dynamoDbClient.getItem(any(GetItemRequest.class))).thenReturn(GetItemResponse.builder()
+                .item(Map.of("requestFingerprint", string("request-fingerprint")))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, mock(KmsClient.class), "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        assertEquals("request-fingerprint",
+                repository.findRegistrationFingerprintByIdempotencyKey("key-hash"));
+
+        ArgumentCaptor<GetItemRequest> request = ArgumentCaptor.forClass(GetItemRequest.class);
+        verify(dynamoDbClient).getItem(request.capture());
+        assertEquals("Saved2ServeRecords", request.getValue().tableName());
+        assertTrue(request.getValue().consistentRead());
+        assertEquals("IDEMPOTENCY#key-hash", request.getValue().key().get("PK").s());
+        assertEquals("REGISTRATION", request.getValue().key().get("SK").s());
+    }
+
+    @Test
+    void idempotentSaveUsesConditionalWriteAndStoresOnlyHashesForRetryIdentity() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
+                .ciphertextBlob(SdkBytes.fromUtf8String("encrypted"))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        assertEquals(InterestRepository.IdempotentSaveResult.CREATED, repository.saveIdempotently(
+                new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page"),
+                "key-hash",
+                "request-fingerprint"
+        ));
+
+        ArgumentCaptor<PutItemRequest> request = ArgumentCaptor.forClass(PutItemRequest.class);
+        verify(dynamoDbClient).putItem(request.capture());
+        assertEquals("attribute_not_exists(#pk)", request.getValue().conditionExpression());
+        assertEquals(Map.of("#pk", "PK"), request.getValue().expressionAttributeNames());
+        assertEquals("IDEMPOTENCY#key-hash", request.getValue().item().get("PK").s());
+        assertEquals("request-fingerprint", request.getValue().item().get("requestFingerprint").s());
+        assertEquals("key-hash", request.getValue().item().get("idempotencyKeyHash").s());
+        assertFalse(request.getValue().item().containsKey("idempotencyKey"));
+        assertFalse(request.getValue().item().containsKey("email"));
+    }
+
+    @Test
+    void conditionalIdempotentWriteRecognizesMatchingRetry() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
+                .ciphertextBlob(SdkBytes.fromUtf8String("encrypted"))
+                .build());
+        when(dynamoDbClient.putItem(any(PutItemRequest.class))).thenThrow(
+                ConditionalCheckFailedException.builder().message("Already exists").build()
+        );
+        when(dynamoDbClient.getItem(any(GetItemRequest.class))).thenReturn(GetItemResponse.builder()
+                .item(Map.of("requestFingerprint", string("same-fingerprint")))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        assertEquals(InterestRepository.IdempotentSaveResult.REPLAYED, repository.saveIdempotently(
+                new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page"),
+                "key-hash",
+                "same-fingerprint"
+        ));
+    }
+
+    @Test
+    void conditionalIdempotentWriteRejectsChangedPayloadForExistingKey() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
+                .ciphertextBlob(SdkBytes.fromUtf8String("encrypted"))
+                .build());
+        when(dynamoDbClient.putItem(any(PutItemRequest.class))).thenThrow(
+                ConditionalCheckFailedException.builder().message("Already exists").build()
+        );
+        when(dynamoDbClient.getItem(any(GetItemRequest.class))).thenReturn(GetItemResponse.builder()
+                .item(Map.of("requestFingerprint", string("original-fingerprint")))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        assertEquals(InterestRepository.IdempotentSaveResult.IDEMPOTENCY_KEY_CONFLICT,
+                repository.saveIdempotently(
+                        new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page"),
+                        "key-hash",
+                        "changed-fingerprint"
+                ));
     }
 
     private static Map<String, AttributeValue> engagementItem(String id) {
