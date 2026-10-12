@@ -4,6 +4,7 @@ import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
+import com.saved2serve.util.EmailHasher;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.core.SdkBytes;
@@ -46,7 +47,7 @@ class DynamoDbRecordMapperTest {
         assertEquals("INTEREST", item.get("entityType").s());
         assertTrue(item.get("createdAt").s().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{9}Z"));
         assertEquals("AREA#10001", item.get("GSI2PK").s());
-        assertEquals("EMAIL_HASH#" + DynamoDbRecordMapper.sha256("person@example.com"), item.get("GSI3PK").s());
+        assertEquals("EMAIL_HASH#" + EmailHasher.sha256("person@example.com"), item.get("GSI3PK").s());
         assertEquals(ENCRYPTED_EMAIL.length, item.get("emailCiphertext").b().asByteArray().length);
 
         ArgumentCaptor<EncryptRequest> encryptRequests = ArgumentCaptor.forClass(EncryptRequest.class);
