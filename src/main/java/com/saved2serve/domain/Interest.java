@@ -1,5 +1,6 @@
 package com.saved2serve.domain;
 
+import java.time.Instant;
 import java.util.Objects;
 
 public record Interest(
@@ -8,7 +9,8 @@ public record Interest(
         String areaCode,
         String phone,
         boolean consent,
-        String source
+        String source,
+        Instant consentedAt
 ) {
     public Interest {
         name = normalize(name);
@@ -16,6 +18,7 @@ public record Interest(
         areaCode = normalize(areaCode);
         phone = normalize(phone);
         source = normalize(source);
+        consentedAt = Objects.requireNonNull(consentedAt, "consentedAt must not be null");
 
         if (name.isBlank()) {
             throw new IllegalArgumentException("Name is required.");
