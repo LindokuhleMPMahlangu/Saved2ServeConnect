@@ -4,6 +4,7 @@ import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
+import com.saved2serve.util.EmailHasher;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.kms.KmsClient;
@@ -11,14 +12,10 @@ import software.amazon.awssdk.services.kms.model.DecryptRequest;
 import software.amazon.awssdk.services.kms.model.EncryptRequest;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -106,7 +103,7 @@ public final class DynamoDbRecordMapper {
             String areaCode,
             String email
     ) {
-        String emailHash = sha256(email);
+        String emailHash = EmailHasher.sha256(email);
         Map<String, AttributeValue> item = new HashMap<>();
         item.put(PK, string("ENTITY#" + recordId));
         item.put(SK, string("TYPE#" + entityType + "#" + createdAt));
@@ -158,17 +155,6 @@ public final class DynamoDbRecordMapper {
 
     static String createdAtKey(String createdAt, String recordId) {
         return "CREATED_AT#" + createdAt + "#" + recordId;
-    }
-
-    static String sha256(String email) {
-        try {
-            String canonicalEmail = email.trim().toLowerCase(Locale.ROOT);
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(canonicalEmail.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is unavailable.", exception);
-        }
     }
 
     static AttributeValue string(String value) {
