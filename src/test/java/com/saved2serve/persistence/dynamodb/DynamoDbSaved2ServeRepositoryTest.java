@@ -27,6 +27,7 @@ import software.amazon.awssdk.services.kms.model.EncryptResponse;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,6 +43,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DynamoDbSaved2ServeRepositoryTest {
+    private static final Instant CONSENTED_AT = Instant.parse("2026-10-24T10:15:30Z");
     @Test
     void areaCodeLookupUsesAreaIndexAndMapsEveryPage() {
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
@@ -201,7 +203,7 @@ class DynamoDbSaved2ServeRepositoryTest {
 
         AwsServiceException thrown = assertThrows(AwsServiceException.class,
                 () -> repository.save(new Interest(
-                        "A Person", "person@example.com", "10001", "", true, "landing-page"
+                        "A Person", "person@example.com", "10001", "", true, "landing-page", CONSENTED_AT
                 )));
 
         assertSame(awsFailure, thrown);
@@ -224,7 +226,7 @@ class DynamoDbSaved2ServeRepositoryTest {
 
         AwsServiceException thrown = assertThrows(AwsServiceException.class,
                 () -> repository.save(new Interest(
-                        "A Person", "person@example.com", "10001", "", true, "landing-page"
+                        "A Person", "person@example.com", "10001", "", true, "landing-page", CONSENTED_AT
                 )));
 
         assertSame(awsFailure, thrown);
@@ -262,7 +264,7 @@ class DynamoDbSaved2ServeRepositoryTest {
         );
 
         repository.save(new Interest(
-                "A Person", "person@example.com", "10001", "", true, "landing-page"
+                "A Person", "person@example.com", "10001", "", true, "landing-page", CONSENTED_AT
         ));
 
         ArgumentCaptor<PutItemRequest> request = ArgumentCaptor.forClass(PutItemRequest.class);
@@ -270,6 +272,7 @@ class DynamoDbSaved2ServeRepositoryTest {
         assertEquals("Saved2ServeRecords", request.getValue().tableName());
         assertEquals("EMAIL_HASH#" + EmailHasher.sha256("person@example.com"),
                 request.getValue().item().get("GSI3PK").s());
+        assertEquals(CONSENTED_AT.toString(), request.getValue().item().get("consentedAt").s());
         assertFalse(request.getValue().item().containsKey("email"));
         assertEquals("encrypted", request.getValue().item().get("emailCiphertext").b().asUtf8String());
     }
@@ -307,7 +310,7 @@ class DynamoDbSaved2ServeRepositoryTest {
         );
 
         assertEquals(InterestRepository.IdempotentSaveResult.CREATED, repository.saveIdempotently(
-                new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page"),
+                new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page", CONSENTED_AT),
                 "key-hash",
                 "request-fingerprint"
         ));
@@ -341,7 +344,7 @@ class DynamoDbSaved2ServeRepositoryTest {
         );
 
         assertEquals(InterestRepository.IdempotentSaveResult.REPLAYED, repository.saveIdempotently(
-                new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page"),
+                new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page", CONSENTED_AT),
                 "key-hash",
                 "same-fingerprint"
         ));
@@ -366,7 +369,7 @@ class DynamoDbSaved2ServeRepositoryTest {
 
         assertEquals(InterestRepository.IdempotentSaveResult.IDEMPOTENCY_KEY_CONFLICT,
                 repository.saveIdempotently(
-                        new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page"),
+                        new Interest("Alex Smith", "alex@example.com", "10001", "", true, "landing-page", CONSENTED_AT),
                         "key-hash",
                         "changed-fingerprint"
                 ));
@@ -410,6 +413,7 @@ class DynamoDbSaved2ServeRepositoryTest {
                 Map.entry("name", string(id)),
                 Map.entry("phone", string("")),
                 Map.entry("consent", AttributeValue.builder().bool(true).build()),
+                Map.entry("consentedAt", string(CONSENTED_AT.toString())),
                 Map.entry("source", string("landing-page")),
                 Map.entry("GSI2PK", string("AREA#10001")),
                 Map.entry("GSI2SK", string("CREATED_AT#2026-01-01T00:00:00Z#" + id)),
