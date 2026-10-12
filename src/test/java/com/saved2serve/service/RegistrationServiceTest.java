@@ -140,7 +140,7 @@ class RegistrationServiceTest {
         when(repository.existsByEmailHash(NORMALIZED_EMAIL_HASH)).thenReturn(false);
         when(repository.saveIdempotently(any(Interest.class), any(String.class), any(String.class)))
                 .thenReturn(InterestRepository.IdempotentSaveResult.REPLAYED);
-        RegistrationService service = new RegistrationService(repository, emailHasher);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256);
 
         Saved2ServeValidator.ValidationResult result = service.register(request);
 
