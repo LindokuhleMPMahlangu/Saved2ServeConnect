@@ -51,6 +51,10 @@ This repository now includes the DynamoDB design notes for the Save2Serve MVP ac
 
 The complete write-up is in [docs/day-04-dynamodb-keys-indexes-and-access-patterns.md](docs/day-04-dynamodb-keys-indexes-and-access-patterns.md) and stays aligned with the privacy-first MVP boundaries. The interfaces define the AWS-SDK-independent application contract, implemented by a separate DynamoDB/KMS persistence adapter.
 
+## Day 05 deliverables included
+
+The registration application service is covered by deterministic unit tests using a mocked interest repository. The tests verify accepted registrations, duplicate rejection, invalid-email rejection before persistence, and canonical email-hash lookup. Email hashing is shared between the service and DynamoDB mapper so duplicate checks use the same normalized SHA-256 value as the persistence index. The service stores only the allowlisted interest fields and does not introduce address, GPS, clock, or random dependencies.
+
 ## Java and dependency baseline
 
 - Java 21
