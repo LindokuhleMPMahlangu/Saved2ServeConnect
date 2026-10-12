@@ -8,6 +8,8 @@ import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.repository.Page;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
+import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
@@ -89,6 +91,56 @@ public final class DynamoDbSaved2ServeRepository implements InterestRepository, 
                 .limit(1)
                 .build());
         return response.count() != null && response.count() > 0;
+    }
+
+    @Override
+    public String findRegistrationFingerprintByIdempotencyKey(String idempotencyKeyHash) {
+        Map<String, AttributeValue> item = dynamoDbClient.getItem(GetItemRequest.builder()
+                        .tableName(tableName)
+                        .key(DynamoDbRecordMapper.idempotencyKey(idempotencyKeyHash))
+                        .consistentRead(true)
+                        .build())
+                .item();
+        if (item == null || item.isEmpty()) {
+            return null;
+        }
+        AttributeValue fingerprint = item.get("requestFingerprint");
+        if (fingerprint == null || fingerprint.s() == null || fingerprint.s().isBlank()) {
+            throw new IllegalStateException("Idempotency record is missing its request fingerprint.");
+        }
+        return fingerprint.s();
+    }
+
+    @Override
+    public IdempotentSaveResult saveIdempotently(
+            Interest interest,
+            String idempotencyKeyHash,
+            String requestFingerprint
+    ) {
+        Objects.requireNonNull(interest, "interest must not be null");
+        String normalizedIdempotencyKeyHash = requireNonBlank(idempotencyKeyHash, "idempotencyKeyHash");
+        String normalizedRequestFingerprint = requireNonBlank(requestFingerprint, "requestFingerprint");
+        try {
+            dynamoDbClient.putItem(PutItemRequest.builder()
+                    .tableName(tableName)
+                    .item(mapper.toIdempotentItem(
+                            interest, normalizedIdempotencyKeyHash, normalizedRequestFingerprint
+                    ))
+                    .conditionExpression("attribute_not_exists(#pk)")
+                    .expressionAttributeNames(Map.of("#pk", DynamoDbRecordMapper.PK))
+                    .build());
+            return IdempotentSaveResult.CREATED;
+        } catch (ConditionalCheckFailedException duplicateKey) {
+            String existingFingerprint = findRegistrationFingerprintByIdempotencyKey(
+                    normalizedIdempotencyKeyHash
+            );
+            if (existingFingerprint == null) {
+                throw duplicateKey;
+            }
+            return existingFingerprint.equals(normalizedRequestFingerprint)
+                    ? IdempotentSaveResult.REPLAYED
+                    : IdempotentSaveResult.IDEMPOTENCY_KEY_CONFLICT;
+        }
     }
 
     @Override
