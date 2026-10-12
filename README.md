@@ -53,7 +53,7 @@ The complete write-up is in [docs/day-04-dynamodb-keys-indexes-and-access-patter
 
 ## Day 05 deliverables included
 
-The registration application service is covered by deterministic unit tests using injected repository and hashing dependencies. Normalized email hashes drive duplicate checks, while callers supply an idempotency key to safely replay the same request after an uncertain response. DynamoDB stores only hashes, fingerprints, and the allowlisted interest fields; conditional writes prevent a retry from creating a second registration, and reusing a key for changed request data is rejected. The flow introduces no address, GPS, clock, or random dependencies at the service boundary.
+The registration application service is covered by deterministic unit tests using injected repository, hashing, and clock dependencies. The service records the consent timestamp at acceptance time; clients cannot supply or backdate it. Repository failures become a typed persistence exception with a generic non-sensitive message and the original cause preserved for trusted diagnostics. Normalized email hashes drive duplicate checks, while callers supply an idempotency key to safely replay the same request after an uncertain response. DynamoDB stores only hashes, fingerprints, consent time, and allowlisted interest fields; conditional writes prevent a retry from creating a second registration, and reusing a key for changed request data is rejected. The flow remains area-code-only and does not collect full addresses or GPS coordinates.
 
 ## Java and dependency baseline
 
