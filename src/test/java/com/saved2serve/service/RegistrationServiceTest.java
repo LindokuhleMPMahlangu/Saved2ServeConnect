@@ -8,11 +8,15 @@ import com.saved2serve.validation.Saved2ServeValidator;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Locale;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -26,6 +30,8 @@ class RegistrationServiceTest {
     private static final String IDEMPOTENCY_KEY = "signup-attempt-123";
     private static final String IDEMPOTENCY_KEY_HASH = Hashing.sha256(IDEMPOTENCY_KEY);
     private static final String NORMALIZED_EMAIL_HASH = Hashing.sha256("alex@example.com");
+    private static final Instant CONSENTED_AT = Instant.parse("2026-10-24T10:15:30Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(CONSENTED_AT, ZoneOffset.UTC);
 
     @Test
     void validRegistrationChecksEmailHashAndSavesMinimalInterest() {
@@ -44,7 +50,7 @@ class RegistrationServiceTest {
         when(repository.existsByEmailHash(NORMALIZED_EMAIL_HASH)).thenReturn(false);
         when(repository.saveIdempotently(any(Interest.class), any(String.class), any(String.class)))
                 .thenReturn(InterestRepository.IdempotentSaveResult.CREATED);
-        RegistrationService service = new RegistrationService(repository, Hashing::sha256);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
 
         Saved2ServeValidator.ValidationResult result = service.register(request);
 
@@ -59,7 +65,7 @@ class RegistrationServiceTest {
                 org.mockito.ArgumentMatchers.eq(fingerprint)
         );
         assertEquals(new Interest(
-                "Alex Smith", "Alex@Example.com", "10001", "5551234567", true, "landing-page"
+                "Alex Smith", "Alex@Example.com", "10001", "5551234567", true, "landing-page", CONSENTED_AT
         ), interest.getValue());
     }
 
@@ -72,7 +78,7 @@ class RegistrationServiceTest {
         );
         when(repository.findRegistrationFingerprintByIdempotencyKey(IDEMPOTENCY_KEY_HASH)).thenReturn(null);
         when(repository.existsByEmailHash(NORMALIZED_EMAIL_HASH)).thenReturn(true);
-        RegistrationService service = new RegistrationService(repository, Hashing::sha256);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
 
         Saved2ServeValidator.ValidationResult result = service.register(request);
 
@@ -93,7 +99,7 @@ class RegistrationServiceTest {
         when(repository.existsByEmailHash(NORMALIZED_EMAIL_HASH)).thenReturn(false);
         when(repository.saveIdempotently(any(Interest.class), any(String.class), any(String.class)))
                 .thenReturn(InterestRepository.IdempotentSaveResult.CREATED);
-        RegistrationService service = new RegistrationService(repository, Hashing::sha256);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
 
         Saved2ServeValidator.ValidationResult initial = service.register(request);
         Saved2ServeValidator.ValidationResult retry = service.register(request(
@@ -120,7 +126,7 @@ class RegistrationServiceTest {
         );
         when(repository.findRegistrationFingerprintByIdempotencyKey(IDEMPOTENCY_KEY_HASH))
                 .thenReturn(fingerprint(original));
-        RegistrationService service = new RegistrationService(repository, Hashing::sha256);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
 
         Saved2ServeValidator.ValidationResult result = service.register(changed);
 
@@ -140,7 +146,7 @@ class RegistrationServiceTest {
         when(repository.existsByEmailHash(NORMALIZED_EMAIL_HASH)).thenReturn(false);
         when(repository.saveIdempotently(any(Interest.class), any(String.class), any(String.class)))
                 .thenReturn(InterestRepository.IdempotentSaveResult.REPLAYED);
-        RegistrationService service = new RegistrationService(repository, Hashing::sha256);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
 
         Saved2ServeValidator.ValidationResult result = service.register(request);
 
@@ -149,12 +155,76 @@ class RegistrationServiceTest {
     }
 
     @Test
+    void repositoryLookupFailureHasSafeMessageAndPreservesCause() {
+        InterestRepository repository = mock(InterestRepository.class);
+        RuntimeException repositoryFailure = new IllegalStateException("Failure for alex@example.com");
+        when(repository.findRegistrationFingerprintByIdempotencyKey(IDEMPOTENCY_KEY_HASH))
+                .thenThrow(repositoryFailure);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
+
+        RegistrationService.RegistrationPersistenceException thrown = assertThrows(
+                RegistrationService.RegistrationPersistenceException.class,
+                () -> service.register(request(
+                        IDEMPOTENCY_KEY, "Alex Smith", "alex@example.com", "10001", "", true, "landing-page"
+                ))
+        );
+
+        assertEquals("Registration could not be completed. Please try again.", thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("alex@example.com"));
+        assertSame(repositoryFailure, thrown.getCause());
+        verify(repository, never()).saveIdempotently(any(Interest.class), any(String.class), any(String.class));
+    }
+
+    @Test
+    void duplicateLookupFailureHasSafeMessageAndDoesNotSave() {
+        InterestRepository repository = mock(InterestRepository.class);
+        RuntimeException repositoryFailure = new IllegalStateException("Failure for alex@example.com");
+        when(repository.findRegistrationFingerprintByIdempotencyKey(IDEMPOTENCY_KEY_HASH)).thenReturn(null);
+        when(repository.existsByEmailHash(NORMALIZED_EMAIL_HASH)).thenThrow(repositoryFailure);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
+
+        RegistrationService.RegistrationPersistenceException thrown = assertThrows(
+                RegistrationService.RegistrationPersistenceException.class,
+                () -> service.register(request(
+                        IDEMPOTENCY_KEY, "Alex Smith", "alex@example.com", "10001", "", true, "landing-page"
+                ))
+        );
+
+        assertEquals("Registration could not be completed. Please try again.", thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("alex@example.com"));
+        assertSame(repositoryFailure, thrown.getCause());
+        verify(repository, never()).saveIdempotently(any(Interest.class), any(String.class), any(String.class));
+    }
+
+    @Test
+    void saveFailureHasSafeMessageAndPreservesCause() {
+        InterestRepository repository = mock(InterestRepository.class);
+        RuntimeException repositoryFailure = new IllegalStateException("Failure for alex@example.com");
+        when(repository.findRegistrationFingerprintByIdempotencyKey(IDEMPOTENCY_KEY_HASH)).thenReturn(null);
+        when(repository.existsByEmailHash(NORMALIZED_EMAIL_HASH)).thenReturn(false);
+        when(repository.saveIdempotently(any(Interest.class), any(String.class), any(String.class)))
+                .thenThrow(repositoryFailure);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
+
+        RegistrationService.RegistrationPersistenceException thrown = assertThrows(
+                RegistrationService.RegistrationPersistenceException.class,
+                () -> service.register(request(
+                        IDEMPOTENCY_KEY, "Alex Smith", "alex@example.com", "10001", "", true, "landing-page"
+                ))
+        );
+
+        assertEquals("Registration could not be completed. Please try again.", thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("alex@example.com"));
+        assertSame(repositoryFailure, thrown.getCause());
+    }
+
+    @Test
     void invalidEmailIsRejectedBeforeRepositoryAccess() {
         InterestRepository repository = mock(InterestRepository.class);
         Function<String, String> emailHasher = email -> {
             throw new AssertionError("Invalid registration must not hash request values.");
         };
-        RegistrationService service = new RegistrationService(repository, emailHasher);
+        RegistrationService service = new RegistrationService(repository, emailHasher, FIXED_CLOCK);
         InterestRequest request = request(
                 IDEMPOTENCY_KEY,
                 "Alex Smith", "not-an-email", "10001", "", true, "landing-page"
