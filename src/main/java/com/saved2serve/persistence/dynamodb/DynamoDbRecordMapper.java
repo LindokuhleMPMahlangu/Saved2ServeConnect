@@ -49,6 +49,7 @@ public final class DynamoDbRecordMapper {
         item.put("name", string(interest.name()));
         item.put("phone", string(interest.phone()));
         item.put("consent", bool(interest.consent()));
+        item.put("consentedAt", string(interest.consentedAt().toString()));
         item.put("source", string(interest.source()));
         return Map.copyOf(item);
     }
@@ -100,7 +101,8 @@ public final class DynamoDbRecordMapper {
                 requiredString(item, "areaCode"),
                 requiredString(item, "phone"),
                 requiredBoolean(item, "consent"),
-                requiredString(item, "source")
+                requiredString(item, "source"),
+                Instant.parse(requiredString(item, "consentedAt"))
         );
     }
 
