@@ -64,13 +64,15 @@ class InterestEngagementRecordsTest {
 
     @Test
     void interestRequestUsesExplicitAllowlistOnly() {
-        assertEquals(Set.of("name", "email", "areaCode", "phone", "consent", "source"), InterestRequest.ALLOWED_FIELDS);
+        assertEquals(Set.of("idempotencyKey", "name", "email", "areaCode", "phone", "consent", "source"),
+                InterestRequest.ALLOWED_FIELDS);
         assertFalse(InterestRequest.ALLOWED_FIELDS.contains("fullAddress"));
         assertFalse(InterestRequest.ALLOWED_FIELDS.contains("latitude"));
         assertFalse(InterestRequest.ALLOWED_FIELDS.contains("longitude"));
         assertFalse(InterestRequest.ALLOWED_FIELDS.contains("status"));
 
         InterestRequest request = new InterestRequest(
+                "registration-attempt-123",
                 "Morgan Lee",
                 "morgan@example.com",
                 "10001",
@@ -79,6 +81,7 @@ class InterestEngagementRecordsTest {
                 "qr-code"
         );
 
+        assertEquals("registration-attempt-123", request.idempotencyKey());
         assertEquals("Morgan Lee", request.name());
         assertEquals("10001", request.areaCode());
     }
