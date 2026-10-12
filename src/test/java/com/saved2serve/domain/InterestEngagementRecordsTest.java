@@ -3,6 +3,7 @@ package com.saved2serve.domain;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -19,7 +20,8 @@ class InterestEngagementRecordsTest {
                 "10001",
                 "5551234567",
                 true,
-                "landing-page"
+                "landing-page",
+                Instant.parse("2026-10-24T10:00:00Z")
         );
 
         assertEquals("Alex Smith", interest.name());
@@ -28,12 +30,15 @@ class InterestEngagementRecordsTest {
         assertEquals("5551234567", interest.phone());
         assertTrue(interest.consent());
         assertEquals("landing-page", interest.source());
+        assertEquals(Instant.parse("2026-10-24T10:00:00Z"), interest.consentedAt());
 
         Set<String> names = Arrays.stream(Interest.class.getRecordComponents())
                 .map(component -> component.getName())
                 .collect(Collectors.toSet());
 
-        assertTrue(names.containsAll(Set.of("name", "email", "areaCode", "phone", "consent", "source")));
+        assertTrue(names.containsAll(Set.of(
+                "name", "email", "areaCode", "phone", "consent", "source", "consentedAt"
+        )));
         assertFalse(containsField(Interest.class, "fullAddress"));
         assertFalse(containsField(Interest.class, "latitude"));
         assertFalse(containsField(Interest.class, "longitude"));
