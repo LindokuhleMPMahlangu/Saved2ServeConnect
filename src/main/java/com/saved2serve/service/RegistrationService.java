@@ -5,6 +5,7 @@ import com.saved2serve.domain.InterestRequest;
 import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.validation.Saved2ServeValidator;
 
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -12,16 +13,16 @@ public final class RegistrationService {
     private static final String DUPLICATE_REGISTRATION_MESSAGE = "Registration could not be completed.";
 
     private final InterestRepository interestRepository;
-    private final Function<String, String> emailHasher;
+    private final Function<String, String> sha256Hasher;
 
     public RegistrationService(
             InterestRepository interestRepository,
-            Function<String, String> emailHasher
+            Function<String, String> sha256Hasher
     ) {
         this.interestRepository = Objects.requireNonNull(
                 interestRepository, "interestRepository must not be null"
         );
-        this.emailHasher = Objects.requireNonNull(emailHasher, "emailHasher must not be null");
+        this.sha256Hasher = Objects.requireNonNull(sha256Hasher, "sha256Hasher must not be null");
     }
 
     public Saved2ServeValidator.ValidationResult register(InterestRequest request) {
@@ -40,19 +41,52 @@ public final class RegistrationService {
             return validation;
         }
 
-        String emailHash = emailHasher.apply(request.email());
+        String idempotencyKeyHash = sha256Hasher.apply(request.idempotencyKey());
+        String requestFingerprint = sha256Hasher.apply(fingerprint(request));
+        String existingFingerprint =
+                interestRepository.findRegistrationFingerprintByIdempotencyKey(idempotencyKeyHash);
+        if (existingFingerprint != null) {
+            return registrationResult(existingFingerprint.equals(requestFingerprint));
+        }
+
+        String emailHash = sha256Hasher.apply(request.email().toLowerCase(Locale.ROOT));
         if (interestRepository.existsByEmailHash(emailHash)) {
             return new Saved2ServeValidator.ValidationResult(false, DUPLICATE_REGISTRATION_MESSAGE);
         }
 
-        interestRepository.save(new Interest(
+        Interest interest = new Interest(
                 request.name(),
                 request.email(),
                 request.areaCode(),
                 request.phone(),
                 request.consent(),
                 request.source()
-        ));
-        return new Saved2ServeValidator.ValidationResult(true, "accepted");
+        );
+        InterestRepository.IdempotentSaveResult saveResult = interestRepository.saveIdempotently(
+                interest,
+                idempotencyKeyHash,
+                requestFingerprint
+        );
+        return registrationResult(saveResult != InterestRepository.IdempotentSaveResult.IDEMPOTENCY_KEY_CONFLICT);
+    }
+
+    private static Saved2ServeValidator.ValidationResult registrationResult(boolean accepted) {
+        return accepted
+                ? new Saved2ServeValidator.ValidationResult(true, "accepted")
+                : new Saved2ServeValidator.ValidationResult(false, DUPLICATE_REGISTRATION_MESSAGE);
+    }
+
+    private static String fingerprint(InterestRequest request) {
+        return field(request.idempotencyKey())
+                + field(request.name())
+                + field(request.email().toLowerCase(Locale.ROOT))
+                + field(request.areaCode())
+                + field(request.phone())
+                + field(Boolean.toString(request.consent()))
+                + field(request.source());
+    }
+
+    private static String field(String value) {
+        return value.length() + ":" + value;
     }
 }
