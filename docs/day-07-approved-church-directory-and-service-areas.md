@@ -3,14 +3,15 @@
 ## Purpose and current data status
 
 This document defines the MVP data contract for the public church directory and
-its service areas. The pilot scope is Johannesburg, South Africa, using four-digit
-postal codes as area codes. Records are loaded only after the project owner approves verified church
-information and explicit service-area mappings. The initial pilot seed contains
+its service areas. The pilot scope is Johannesburg, South Africa, using
+four-digit postal codes as area codes. Records are loaded only after the project
+owner approves verified church information and explicit service-area mappings.
+The initial pilot seed contains
 one owner-approved mapping for House of Treasures Ministries at area code `1800`,
 based on the project owner's report that the church confirmed this service area.
 No additional postcodes are inferred from its address or broad Johannesburg
 coverage statement. The
-candidate discovery process and current readiness blockers are documented in
+candidate discovery process and remaining readiness considerations are documented in
 [Day 07 - Seeding church candidates with explicit area mappings](day-07-seeding-church-candidates.md).
 
 ## Directory data
@@ -92,7 +93,7 @@ The following checks define review evidence for this deliverable:
 | A church is approved for one active code | It is returned only for an exact match on that code. |
 | A lookup differs by prefix or leading zero from the registered code | It is not coerced into a different code or treated as a match. |
 | A valid code has no approved churches | The lookup returns an empty result; it does not broaden the area. |
-| Public directory data is returned | Only the verified public name and optional website are exposed. |
+| Public directory data is returned | Only the verified public name, optional website, and specifically approved public church address are exposed. |
 | A request contains a full address or precise coordinates | These remain outside the service-area contract and are not collected. |
 
 Runtime lookup for `GET /v1/churches?areaCode=...` is implemented by
@@ -106,8 +107,8 @@ items with the same stable church ID, one item per verified exact code.
 `ChurchDirectoryRepository.saveApproved` persists a mapping only when its
 record is approved and includes both `verifiedAt` and `sourceReference`.
 Verification metadata stays internal and is not projected into public
-responses. No directory records are populated until verified data and an
-operating geography are supplied. `ChurchDirectorySeed` provides the approved
+responses. No other directory records are populated until their data and
+service-area mappings are verified. `ChurchDirectorySeed` provides the approved
 House of Treasures Ministries mapping for area code `1800` and its owner-approved
 public church address; run it only against the configured DynamoDB table after
 reviewing the seed values and AWS account.
