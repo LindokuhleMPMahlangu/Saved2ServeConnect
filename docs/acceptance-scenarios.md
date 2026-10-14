@@ -26,11 +26,14 @@ See the README for the full implementation summary and supporting project detail
 - pending, rejected, and inactive churches are not returned by public directory lookups
 - an approved church is returned only for its explicitly listed active service-area codes
 - a code prefix, a nearby area, or a code with a different leading zero does not create a match
-- directory responses expose only the verified public name and optional website
+- directory responses expose only the church ID, verified public name, and optional website
 - an unpopulated directory stays empty until verified church records and an operating geography are approved
 - API-discovered church candidates remain pending review and are not exposed as approved directory records
 - service-area mappings are included only when verified against the canonical area register; mappings are never inferred from proximity or coordinates
+- blank lookup codes are rejected, surrounding whitespace is trimmed, and leading zeroes are preserved
 
+The area-code lookup service and DynamoDB repository filter are covered by
+`ChurchDirectoryServiceTest` and `DynamoDbSaved2ServeRepositoryTest`.
 See [day-07-approved-church-directory-and-service-areas.md](day-07-approved-church-directory-and-service-areas.md) for the data contract, approval rules, and review evidence.
 See [day-07-seeding-church-candidates.md](day-07-seeding-church-candidates.md) for the candidate-import workflow and readiness blockers.
 
