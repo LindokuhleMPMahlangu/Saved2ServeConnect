@@ -52,9 +52,9 @@ infer coverage for unlisted codes.
   prefixes, or infer a nearby area.
 - Return only approved churches linked to that exact active code. If there are
   no matches, return an empty result rather than widening the search.
-- Return only the church's verified public display name and optional public
-  website. Do not expose review status, source references, reviewer identity,
-  or unrelated service-area memberships.
+- Return only the church's opaque public `churchId`, verified public display
+  name, and optional public website. Do not expose review status, source
+  references, reviewer identity, or unrelated service-area memberships.
 - Keep interest matching at area-code level. Do not collect or derive a
   visitor's street address, GPS coordinates, or precise location.
 
@@ -86,6 +86,13 @@ The following checks define review evidence for this deliverable:
 | Public directory data is returned | Only the verified public name and optional website are exposed. |
 | A request contains a full address or precise coordinates | These remain outside the service-area contract and are not collected. |
 
-These are documentation-level review checks. Runtime church lookup and a populated
-directory remain out of scope until verified records and the operating geography
+Runtime lookup for `GET /v1/churches?areaCode=...` is implemented by
+`ChurchDirectoryApiHandler`, `ChurchDirectoryRepository`, and
+`ChurchDirectoryService`. The DynamoDB query uses the exact trimmed code and
+filters to approved directory records; the service also rechecks the status and
+code before projecting public fields without review metadata. A missing or
+blank code is rejected, leading zeroes are preserved, and no match returns an
+empty list. Multiple area mappings are stored as separate indexed directory
+items with the same stable church ID, one item per verified exact code. No
+directory records are populated until verified data and an operating geography
 are supplied.
