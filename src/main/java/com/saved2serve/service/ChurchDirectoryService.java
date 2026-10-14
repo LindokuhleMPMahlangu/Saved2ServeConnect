@@ -27,7 +27,9 @@ public final class ChurchDirectoryService {
     }
 
     private static ChurchDirectoryEntry toPublicEntry(ChurchDirectoryRecord record) {
-        return new ChurchDirectoryEntry(record.churchId(), record.displayName(), record.publicWebsite());
+        return new ChurchDirectoryEntry(
+                record.churchId(), record.displayName(), record.publicWebsite(), record.publicAddress()
+        );
     }
 
     private static String requireAreaCode(String areaCode) {
