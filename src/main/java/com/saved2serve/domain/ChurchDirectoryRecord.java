@@ -10,8 +10,21 @@ public record ChurchDirectoryRecord(
         String areaCode,
         ChurchDirectoryStatus status,
         Instant verifiedAt,
-        String sourceReference
+        String sourceReference,
+        String publicAddress
 ) {
+    public ChurchDirectoryRecord(
+            String churchId,
+            String displayName,
+            String publicWebsite,
+            String areaCode,
+            ChurchDirectoryStatus status,
+            Instant verifiedAt,
+            String sourceReference
+    ) {
+        this(churchId, displayName, publicWebsite, areaCode, status, verifiedAt, sourceReference, "");
+    }
+
     public ChurchDirectoryRecord {
         churchId = requireNonBlank(churchId, "churchId");
         displayName = requireNonBlank(displayName, "displayName");
@@ -19,6 +32,7 @@ public record ChurchDirectoryRecord(
         areaCode = requireNonBlank(areaCode, "areaCode");
         status = Objects.requireNonNull(status, "status must not be null");
         sourceReference = Objects.requireNonNullElse(sourceReference, "").trim();
+        publicAddress = Objects.requireNonNullElse(publicAddress, "").trim();
         if (status == ChurchDirectoryStatus.APPROVED
                 && (verifiedAt == null || sourceReference.isBlank())) {
             throw new IllegalArgumentException("Approved churches require verification metadata.");
