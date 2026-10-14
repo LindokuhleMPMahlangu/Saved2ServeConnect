@@ -1,6 +1,7 @@
 package com.saved2serve.persistence.dynamodb;
 
 import com.saved2serve.domain.Engagement;
+import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.InterestRepository;
@@ -78,6 +79,40 @@ class DynamoDbSaved2ServeRepositoryTest {
         assertEquals("INTEREST", firstRequest.expressionAttributeValues().get(":entityType").s());
         assertFalse(firstRequest.scanIndexForward());
         assertEquals(firstPageKey, requests.getAllValues().get(1).exclusiveStartKey());
+    }
+
+    @Test
+    void approvedChurchLookupUsesExactAreaAndFiltersToApprovedChurchRecords() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
+                .items(List.of(Map.of(
+                        "churchId", string("church-123"),
+                        "displayName", string("Example Church"),
+                        "publicWebsite", string("https://example.org"),
+                        "areaCode", string("00123"),
+                        "status", string("APPROVED"),
+                        "entityType", string("CHURCH_DIRECTORY")
+                )))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        var results = repository.findApprovedByAreaCode(" 00123 ");
+
+        assertEquals(1, results.size());
+        assertEquals("00123", results.getFirst().areaCode());
+        assertEquals(ChurchDirectoryStatus.APPROVED, results.getFirst().status());
+        ArgumentCaptor<QueryRequest> request = ArgumentCaptor.forClass(QueryRequest.class);
+        verify(dynamoDbClient).query(request.capture());
+        assertEquals(DynamoDbSaved2ServeRepository.AREA_CREATED_AT_INDEX, request.getValue().indexName());
+        assertEquals("#area = :area", request.getValue().keyConditionExpression());
+        assertEquals("#entityType = :entityType AND #status = :status", request.getValue().filterExpression());
+        assertEquals("AREA#00123", request.getValue().expressionAttributeValues().get(":area").s());
+        assertEquals("CHURCH_DIRECTORY",
+                request.getValue().expressionAttributeValues().get(":entityType").s());
+        assertEquals("APPROVED", request.getValue().expressionAttributeValues().get(":status").s());
     }
 
     @Test
