@@ -21,6 +21,8 @@ class ChurchDirectoryServiceTest {
         when(repository.findApprovedByAreaCode("00123")).thenReturn(List.of(
                 record("approved", "00123", ChurchDirectoryStatus.APPROVED),
                 record("pending", "00123", ChurchDirectoryStatus.PENDING_REVIEW),
+                record("rejected", "00123", ChurchDirectoryStatus.REJECTED),
+                record("inactive", "00123", ChurchDirectoryStatus.INACTIVE),
                 record("different-area", "123", ChurchDirectoryStatus.APPROVED)
         ));
         ChurchDirectoryService service = new ChurchDirectoryService(repository);
