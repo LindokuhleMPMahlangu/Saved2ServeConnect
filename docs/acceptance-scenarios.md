@@ -32,8 +32,9 @@ See the README for the full implementation summary and supporting project detail
 - service-area mappings are included only when verified against the canonical area register; mappings are never inferred from proximity or coordinates
 - blank lookup codes are rejected, surrounding whitespace is trimmed, and leading zeroes are preserved
 
-The area-code lookup service and DynamoDB repository filter are covered by
-`ChurchDirectoryServiceTest` and `DynamoDbSaved2ServeRepositoryTest`.
+The endpoint, lookup service, mapper, and DynamoDB repository filter are covered
+by `ChurchDirectoryApiHandlerTest`, `ChurchDirectoryServiceTest`,
+`DynamoDbRecordMapperTest`, and `DynamoDbSaved2ServeRepositoryTest`.
 See [day-07-approved-church-directory-and-service-areas.md](day-07-approved-church-directory-and-service-areas.md) for the data contract, approval rules, and review evidence.
 See [day-07-seeding-church-candidates.md](day-07-seeding-church-candidates.md) for the candidate-import workflow and readiness blockers.
 
