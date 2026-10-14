@@ -39,6 +39,21 @@ class ChurchDirectoryApiHandlerTest {
     }
 
     @Test
+    void returnsEmptyChurchListWhenAreaHasNoApprovedMatches() {
+        ChurchDirectoryService service = mock(ChurchDirectoryService.class);
+        when(service.findByAreaCode("99999")).thenReturn(List.of());
+        ChurchDirectoryApiHandler handler = new ChurchDirectoryApiHandler(service);
+
+        APIGatewayV2HTTPResponse response = handler.handleRequest(event(
+                "GET", "/v1/churches", Map.of("areaCode", "99999")
+        ), null);
+
+        assertEquals(200, response.getStatusCode());
+        assertTrue(response.getBody().contains("\"churches\":[]"));
+        verify(service).findByAreaCode("99999");
+    }
+
+    @Test
     void rejectsMissingBlankAndUnknownQueryParameters() {
         ChurchDirectoryApiHandler handler = new ChurchDirectoryApiHandler(mock(ChurchDirectoryService.class));
 
