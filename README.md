@@ -61,7 +61,7 @@ The `POST /v1/interests` API Gateway HTTP API Lambda handler validates JSON cont
 
 ## Day 07 deliverables included
 
-The approved church directory and service-area contract is documented in [docs/day-07-approved-church-directory-and-service-areas.md](docs/day-07-approved-church-directory-and-service-areas.md). It defines public results as approved churches associated with an exact active area-code match; the directory remains unpopulated until verified records and an operating geography are supplied. No unverified church records, residential addresses, or precise location data are added.
+The approved church directory and service-area contract is documented in [docs/day-07-approved-church-directory-and-service-areas.md](docs/day-07-approved-church-directory-and-service-areas.md). The candidate import workflow in [docs/day-07-seeding-church-candidates.md](docs/day-07-seeding-church-candidates.md) recommends a bounded OpenStreetMap-based discovery import, with candidates held for review and mappings independently verified. Seeding is blocked until the pilot geography and canonical area-code register are chosen; no unverified church records, residential addresses, or precise visitor location data are added.
 
 ## Java and dependency baseline
 
@@ -148,5 +148,6 @@ Additional supporting materials are available in the docs folder:
 - day-04-dynamodb-keys-indexes-and-access-patterns.md
 - day-06-api-gateway-interest-endpoint.md
 - day-07-approved-church-directory-and-service-areas.md
+- day-07-seeding-church-candidates.md
 
 The architecture document is intentionally kept separate from this README.
