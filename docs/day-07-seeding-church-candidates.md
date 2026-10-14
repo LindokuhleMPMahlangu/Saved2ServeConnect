@@ -123,5 +123,5 @@ mvn -DskipTests package exec:java "-Dexec.mainClass=com.saved2serve.seed.ChurchD
 The command writes an approved directory item through
 `DynamoDbSaved2ServeRepository.saveApproved`. It is an upsert for the stable
 church-and-area key, so review the source values and target AWS account before
-running it. This checkout has no configured AWS table or credentials; the seed
-is implemented and testable locally, but has not been written to a live table.
+running it. This checkout has no configured AWS table target; the seed is
+implemented and testable locally, but has not been written to a live table.
