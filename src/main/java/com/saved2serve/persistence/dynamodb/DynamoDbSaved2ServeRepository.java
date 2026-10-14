@@ -1,8 +1,10 @@
 package com.saved2serve.persistence.dynamodb;
 
+import com.saved2serve.domain.ChurchDirectoryRecord;
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
+import com.saved2serve.repository.ChurchDirectoryRepository;
 import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.repository.Page;
@@ -21,7 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public final class DynamoDbSaved2ServeRepository implements InterestRepository, EngagementRepository {
+public final class DynamoDbSaved2ServeRepository
+        implements InterestRepository, EngagementRepository, ChurchDirectoryRepository {
     public static final String STATUS_CREATED_AT_INDEX = "StatusCreatedAtIndex";
     public static final String AREA_CREATED_AT_INDEX = "AreaCreatedAtIndex";
     public static final String EMAIL_HASH_INDEX = "EmailHashIndex";
@@ -197,6 +200,29 @@ public final class DynamoDbSaved2ServeRepository implements InterestRepository, 
                 .scanIndexForward(false)
                 .build();
         return queryAll(request).stream().map(mapper::toEngagement).toList();
+    }
+
+    @Override
+    public List<ChurchDirectoryRecord> findApprovedByAreaCode(String areaCode) {
+        String normalizedAreaCode = requireNonBlank(areaCode, "areaCode").trim();
+        QueryRequest request = QueryRequest.builder()
+                .tableName(tableName)
+                .indexName(AREA_CREATED_AT_INDEX)
+                .keyConditionExpression("#area = :area")
+                .filterExpression("#entityType = :entityType AND #status = :status")
+                .expressionAttributeNames(Map.of(
+                        "#area", DynamoDbRecordMapper.GSI2PK,
+                        "#entityType", "entityType",
+                        "#status", "status"
+                ))
+                .expressionAttributeValues(Map.of(
+                        ":area", DynamoDbRecordMapper.string("AREA#" + normalizedAreaCode),
+                        ":entityType", DynamoDbRecordMapper.string("CHURCH_DIRECTORY"),
+                        ":status", DynamoDbRecordMapper.string("APPROVED")
+                ))
+                .scanIndexForward(true)
+                .build();
+        return queryAll(request).stream().map(mapper::toChurchDirectoryRecord).toList();
     }
 
     private List<Map<String, AttributeValue>> queryAll(QueryRequest initialRequest) {
