@@ -95,6 +95,31 @@ public final class DynamoDbRecordMapper {
         return Map.copyOf(item);
     }
 
+    public Map<String, AttributeValue> toItem(ChurchDirectoryRecord church) {
+        Objects.requireNonNull(church, "church must not be null");
+        if (church.status() != ChurchDirectoryStatus.APPROVED) {
+            throw new IllegalArgumentException("Only approved churches can be seeded.");
+        }
+
+        String churchAreaKey = "CHURCH#" + church.churchId() + "#AREA#" + church.areaCode();
+        Map<String, AttributeValue> item = new HashMap<>();
+        item.put(PK, string("CHURCH#" + church.churchId()));
+        item.put(SK, string("AREA#" + church.areaCode()));
+        item.put("recordId", string(churchAreaKey));
+        item.put("entityType", string("CHURCH_DIRECTORY"));
+        item.put("createdAt", string(church.verifiedAt().toString()));
+        item.put("churchId", string(church.churchId()));
+        item.put("displayName", string(church.displayName()));
+        item.put("publicWebsite", string(church.publicWebsite()));
+        item.put("areaCode", string(church.areaCode()));
+        item.put("status", string(church.status().name()));
+        item.put("verifiedAt", string(church.verifiedAt().toString()));
+        item.put("sourceReference", string(church.sourceReference()));
+        item.put(GSI2PK, string("AREA#" + church.areaCode()));
+        item.put(GSI2SK, string(churchAreaKey));
+        return Map.copyOf(item);
+    }
+
     public Interest toInterest(Map<String, AttributeValue> item) {
         String recordId = requiredString(item, "recordId");
         return new Interest(
@@ -128,7 +153,9 @@ public final class DynamoDbRecordMapper {
                 requiredString(item, "displayName"),
                 optionalString(item, "publicWebsite"),
                 requiredString(item, "areaCode"),
-                ChurchDirectoryStatus.valueOf(requiredString(item, "status"))
+                ChurchDirectoryStatus.valueOf(requiredString(item, "status")),
+                optionalInstant(item, "verifiedAt"),
+                optionalString(item, "sourceReference")
         );
     }
 
@@ -216,6 +243,11 @@ public final class DynamoDbRecordMapper {
     private static String optionalString(Map<String, AttributeValue> item, String name) {
         AttributeValue value = item.get(name);
         return value == null || value.s() == null ? "" : value.s();
+    }
+
+    private static Instant optionalInstant(Map<String, AttributeValue> item, String name) {
+        String value = optionalString(item, name);
+        return value.isBlank() ? null : Instant.parse(value);
     }
 
     private static boolean requiredBoolean(Map<String, AttributeValue> item, String name) {
