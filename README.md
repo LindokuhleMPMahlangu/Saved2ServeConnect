@@ -59,6 +59,10 @@ The registration application service is covered by deterministic unit tests usin
 
 The `POST /v1/interests` API Gateway HTTP API Lambda handler validates JSON content type, allowlisted fields, required values, base64 payloads, and a 16 KiB request limit before delegating to the registration service. It returns explicit validation, conflict, throttling, and generic service-failure responses without logging or echoing personal data. See [docs/day-06-api-gateway-interest-endpoint.md](docs/day-06-api-gateway-interest-endpoint.md) for the request/response contract, deployment environment, and API Gateway rate-limit notes.
 
+## Day 07 deliverables included
+
+The approved church directory and service-area contract is documented in [docs/day-07-approved-church-directory-and-service-areas.md](docs/day-07-approved-church-directory-and-service-areas.md). It defines public results as approved churches associated with an exact active area-code match; the directory remains unpopulated until verified records and an operating geography are supplied. No unverified church records, residential addresses, or precise location data are added.
+
 ## Java and dependency baseline
 
 - Java 21
@@ -143,5 +147,6 @@ Additional supporting materials are available in the docs folder:
 - architecture.md
 - day-04-dynamodb-keys-indexes-and-access-patterns.md
 - day-06-api-gateway-interest-endpoint.md
+- day-07-approved-church-directory-and-service-areas.md
 
 The architecture document is intentionally kept separate from this README.
