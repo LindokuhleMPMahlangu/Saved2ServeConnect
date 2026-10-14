@@ -35,6 +35,7 @@ class DynamoDbRecordMapperTest {
     private static final String EMAIL = "Person@Example.com";
     private static final byte[] ENCRYPTED_EMAIL = new byte[]{1, 2, 3, 4};
     private static final Instant CONSENTED_AT = Instant.parse("2026-10-24T10:15:30Z");
+    private static final Instant VERIFIED_AT = Instant.parse("2026-10-25T10:00:00Z");
 
     @Test
     void interestMappingEncryptsEmailAndUsesHashOnlyForLookupKeys() {
@@ -117,7 +118,7 @@ class DynamoDbRecordMapperTest {
     }
 
     @Test
-    void mapsChurchDirectoryRecordWithoutReviewMetadataInPublicEntryShape() {
+    void mapsChurchDirectoryRecordWithInternalVerificationMetadata() {
         KmsClient kmsClient = mockKmsClient();
         DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
         Map<String, AttributeValue> item = Map.of(
@@ -126,15 +127,63 @@ class DynamoDbRecordMapperTest {
                 "publicWebsite", string("https://example.org"),
                 "areaCode", string("00123"),
                 "status", string("APPROVED"),
+                "verifiedAt", string(VERIFIED_AT.toString()),
                 "sourceReference", string("internal-review-source")
         );
 
         ChurchDirectoryRecord record = mapper.toChurchDirectoryRecord(item);
 
         assertEquals(new ChurchDirectoryRecord(
-                "church-123", "Example Church", "https://example.org", "00123", ChurchDirectoryStatus.APPROVED
+                "church-123",
+                "Example Church",
+                "https://example.org",
+                "00123",
+                ChurchDirectoryStatus.APPROVED,
+                VERIFIED_AT,
+                "internal-review-source"
         ), record);
         verify(kmsClient, never()).decrypt(any(DecryptRequest.class));
+    }
+
+    @Test
+    void approvedChurchMappingPersistsVerificationMetadataAndAreaIndexKeys() {
+        DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(mockKmsClient(), "alias/test-email-key");
+        ChurchDirectoryRecord church = new ChurchDirectoryRecord(
+                "church-123",
+                "Example Church",
+                "https://example.org",
+                "00123",
+                ChurchDirectoryStatus.APPROVED,
+                VERIFIED_AT,
+                "internal-review-source"
+        );
+
+        Map<String, AttributeValue> item = mapper.toItem(church);
+        ChurchDirectoryRecord restored = mapper.toChurchDirectoryRecord(item);
+
+        assertEquals("CHURCH#church-123", item.get("PK").s());
+        assertEquals("AREA#00123", item.get("SK").s());
+        assertEquals("AREA#00123", item.get("GSI2PK").s());
+        assertEquals("CHURCH#church-123#AREA#00123", item.get("GSI2SK").s());
+        assertEquals(VERIFIED_AT.toString(), item.get("verifiedAt").s());
+        assertEquals("internal-review-source", item.get("sourceReference").s());
+        assertEquals(church, restored);
+    }
+
+    @Test
+    void pendingChurchCannotBeSeededAsApproved() {
+        DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(mockKmsClient(), "alias/test-email-key");
+        ChurchDirectoryRecord church = new ChurchDirectoryRecord(
+                "church-123",
+                "Example Church",
+                "https://example.org",
+                "00123",
+                ChurchDirectoryStatus.PENDING_REVIEW,
+                null,
+                "candidate-source"
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> mapper.toItem(church));
     }
     private static KmsClient mockKmsClient() {
         KmsClient kmsClient = mock(KmsClient.class);
