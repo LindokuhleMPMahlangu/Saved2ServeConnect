@@ -1,24 +1,29 @@
 # Day 07 - Seeding church candidates with explicit area mappings
 
-## Current status: blocked on pilot geography
+## Current status: blocked on approved source data
 
-No church records are seeded by this deliverable. The project has not selected a
-launch geography or its canonical postal/area-code system, so an API query now
-could return an irrelevant or misleading directory. No area mappings can be
-approved without that scope and an authoritative source for the codes.
+The pilot scope is Johannesburg, South Africa, using four-digit postal codes as
+area codes. No church records are seeded yet: an authoritative, licensed
+Johannesburg postal-code register and verified church-to-service-area mappings
+have not been supplied.
 
-## Recommended candidate source
+## Candidate discovery and source restrictions
 
-Use OpenStreetMap as a source for discovering candidate church places, through
-an appropriate OpenStreetMap data/API workflow. Treat its results as leads, not
-as proof that a church is active, authorizes a public listing, or serves a
-particular postal area. Check the source's current usage requirements and
-provide the required attribution before importing or publishing derived data.
+Google Places API results must not be exported into a static seed file or
+persisted as directory content unless a separate license permits that use.
+Google's [Places API policies](https://developers.google.com/maps/documentation/places/web-service/policies)
+restrict pre-fetching, caching, and storing Places content, except for stated
+exceptions such as place IDs, and require attribution when content is displayed.
+Use Places content only in a compliant live-display workflow, or use it as a
+lead to independently verify the church's information from a source that
+authorizes publication.
 
-This should be a bounded, one-time import for an agreed pilot geography, not a
-church lookup against the external API on each public request. Record the
-retrieval date and source reference for each candidate so a reviewer can
-reproduce and evaluate it.
+Other discovery sources are acceptable only when their license permits the
+intended use and any attribution/share-alike obligations can be met. For every
+record, retain the independently verified public source reference, retrieval
+or verification date, and approval evidence. A listing on a map is a lead, not
+proof that a church authorizes a public directory listing or serves a particular
+postal area.
 
 ## Candidate review and area mapping
 
@@ -70,21 +75,24 @@ MVP's prohibition on collecting precise locations from people seeking help.
 
 The import must not run until the project has selected:
 
-1. a pilot country and city/region or a bounded list of area codes
-2. the canonical area-code format and an authoritative register for validation
-3. the reviewer/approval process for church listings and service-area mappings
+1. an authoritative, licensed postal-code register for Johannesburg
+2. church records from a source that permits publication, independently verified
+   public names/websites, and approval evidence
+3. explicit evidence from each church for every postal code it serves; a church
+   address, nearby location, or map result is not evidence of service coverage
 
 Review checks:
 
 | Check | Expected outcome |
 | --- | --- |
-| Pilot geography or code register is undecided | No API query or seed file is created. |
-| A candidate is imported from an external source | It starts `PENDING_REVIEW` with source and retrieval-date metadata. |
+| An authoritative postal-code register is unavailable | No production area mappings are created. |
+| A source's terms do not allow persisted directory data | Its content is not copied into a static seed; use it only in an allowed workflow or choose another source. |
+| A candidate is imported from a permitted source | It starts `PENDING_REVIEW` with source and retrieval-date metadata. |
 | An area code is inferred from proximity or coordinates | The mapping is rejected; no inferred code is stored. |
 | A candidate or mapping has not been reviewed | It is not public and cannot be marked approved. |
 | A candidate passes review | Only verified explicit codes are listed, and the record may be approved. |
 | A lookup has no approved exact match | It returns no church rather than broadening the search. |
 
 This is documentation and review evidence only. No live records, external API
-integration, or public seed operation is included until the readiness decisions
-above are made.
+integration, or public seed operation is included until the source, postal-code
+register, and church-specific service-area evidence above are available.
