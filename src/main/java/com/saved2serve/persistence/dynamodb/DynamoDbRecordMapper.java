@@ -1,5 +1,7 @@
 package com.saved2serve.persistence.dynamodb;
 
+import com.saved2serve.domain.ChurchDirectoryRecord;
+import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
 import com.saved2serve.domain.Interest;
@@ -120,6 +122,16 @@ public final class DynamoDbRecordMapper {
         );
     }
 
+    public ChurchDirectoryRecord toChurchDirectoryRecord(Map<String, AttributeValue> item) {
+        return new ChurchDirectoryRecord(
+                requiredString(item, "churchId"),
+                requiredString(item, "displayName"),
+                optionalString(item, "publicWebsite"),
+                requiredString(item, "areaCode"),
+                ChurchDirectoryStatus.valueOf(requiredString(item, "status"))
+        );
+    }
+
     private Map<String, AttributeValue> baseItem(
             String recordId,
             String entityType,
@@ -199,6 +211,11 @@ public final class DynamoDbRecordMapper {
             throw new IllegalStateException("DynamoDB item is missing required attribute: " + name);
         }
         return value.s();
+    }
+
+    private static String optionalString(Map<String, AttributeValue> item, String name) {
+        AttributeValue value = item.get(name);
+        return value == null || value.s() == null ? "" : value.s();
     }
 
     private static boolean requiredBoolean(Map<String, AttributeValue> item, String name) {
