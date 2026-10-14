@@ -111,6 +111,7 @@ public final class DynamoDbRecordMapper {
         item.put("churchId", string(church.churchId()));
         item.put("displayName", string(church.displayName()));
         item.put("publicWebsite", string(church.publicWebsite()));
+        item.put("publicAddress", string(church.publicAddress()));
         item.put("areaCode", string(church.areaCode()));
         item.put("status", string(church.status().name()));
         item.put("verifiedAt", string(church.verifiedAt().toString()));
@@ -155,7 +156,8 @@ public final class DynamoDbRecordMapper {
                 requiredString(item, "areaCode"),
                 ChurchDirectoryStatus.valueOf(requiredString(item, "status")),
                 optionalInstant(item, "verifiedAt"),
-                optionalString(item, "sourceReference")
+                optionalString(item, "sourceReference"),
+                optionalString(item, "publicAddress")
         );
     }
 
