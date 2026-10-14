@@ -65,6 +65,15 @@ Purpose:
 
 - Return all approved records for a specific area.
 - Keep area matching coarse-grained and privacy-preserving.
+- Church directory items use the exact `AREA#<areaCode>` partition key. Store a
+  church-area item for each explicitly verified mapping, with the church's
+  stable ID, public name, optional public website, `entityType =
+  CHURCH_DIRECTORY`, and review `status`. The lookup filters for
+  `entityType = CHURCH_DIRECTORY` and `status = APPROVED`; pending and other
+  statuses are never public results.
+- For a church mapped to multiple codes, write one indexed church-area item per
+  code, all carrying the same stable `churchId`. Each item uses the exact
+  `areaCode` it indexes; do not create prefix or neighboring-code entries.
 
 ### GSI3: Duplicate and user lookup
 
@@ -122,13 +131,17 @@ Why it matches the MVP:
 
 Operation:
 
-- Query `AreaCreatedAtIndex` with `PK = AREA#<areaCode>`.
-- Filter by approved records only.
+- Query `AreaCreatedAtIndex` with `PK = AREA#<exact areaCode>`.
+- For church directory results, filter by `entityType = CHURCH_DIRECTORY` and
+  `status = APPROVED`.
+- Trim surrounding whitespace from the requested code, preserve leading
+  zeroes, and do not perform prefix, nearby-area, or inferred matching.
 
 Why it matches the MVP:
 
 - Matching stays at the area-code level.
 - No street-level or precise-location data is required.
+- Public results omit review status and internal source references.
 
 ### 5. Duplicate guard for consented submissions
 
@@ -151,7 +164,7 @@ Why it matches the MVP:
 
 ## Repository contracts
 
-The application-facing persistence boundary is defined in `com.saved2serve.repository` and depends only on the domain records and standard Java collection types. `InterestRepository` supports saving an interest, area-code lookup, and duplicate checks using an email hash. `EngagementRepository` supports saving submissions and querying by review status, optionally narrowed to an area code.
+The application-facing persistence boundary is defined in `com.saved2serve.repository` and depends only on the domain records and standard Java collection types. `InterestRepository` supports saving an interest, area-code lookup, and duplicate checks using an email hash. `EngagementRepository` supports saving submissions and querying by review status, optionally narrowed to an area code. `ChurchDirectoryRepository` returns approved church records for one exact area code; `ChurchDirectoryService` rechecks the status and code and projects results to public fields only.
 
 These interfaces do not expose DynamoDB tables, keys, SDK request/response objects, or AWS client types. `EngagementRepository` also provides a `Page<Engagement>` query accepting a page size and opaque cursor, so queue clients can fetch bounded pages without depending on AWS SDK types.
 
