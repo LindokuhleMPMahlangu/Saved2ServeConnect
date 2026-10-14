@@ -2,6 +2,8 @@ package com.saved2serve.persistence.dynamodb;
 
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
+import com.saved2serve.domain.ChurchDirectoryRecord;
+import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.util.EmailHasher;
@@ -113,6 +115,27 @@ class DynamoDbRecordMapperTest {
         assertTrue(item.get("GSI1SK").s().startsWith("CREATED_AT#"));
         assertEquals(engagement, restored);
     }
+
+    @Test
+    void mapsChurchDirectoryRecordWithoutReviewMetadataInPublicEntryShape() {
+        KmsClient kmsClient = mockKmsClient();
+        DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
+        Map<String, AttributeValue> item = Map.of(
+                "churchId", string("church-123"),
+                "displayName", string("Example Church"),
+                "publicWebsite", string("https://example.org"),
+                "areaCode", string("00123"),
+                "status", string("APPROVED"),
+                "sourceReference", string("internal-review-source")
+        );
+
+        ChurchDirectoryRecord record = mapper.toChurchDirectoryRecord(item);
+
+        assertEquals(new ChurchDirectoryRecord(
+                "church-123", "Example Church", "https://example.org", "00123", ChurchDirectoryStatus.APPROVED
+        ), record);
+        verify(kmsClient, never()).decrypt(any(DecryptRequest.class));
+    }
     private static KmsClient mockKmsClient() {
         KmsClient kmsClient = mock(KmsClient.class);
         when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
@@ -122,6 +145,10 @@ class DynamoDbRecordMapperTest {
                 .plaintext(SdkBytes.fromString(EMAIL, StandardCharsets.UTF_8))
                 .build());
         return kmsClient;
+    }
+
+    private static AttributeValue string(String value) {
+        return AttributeValue.builder().s(value).build();
     }
 
 }
