@@ -61,7 +61,7 @@ The `POST /v1/interests` API Gateway HTTP API Lambda handler validates JSON cont
 
 ## Day 07 deliverables included
 
-The approved church directory and service-area contract is documented in [docs/day-07-approved-church-directory-and-service-areas.md](docs/day-07-approved-church-directory-and-service-areas.md). `GET /v1/churches?areaCode=...` uses the `ChurchDirectoryService` and `ChurchDirectoryRepository` for exact area-code lookup and approved entries only; the DynamoDB adapter filters by directory entity type and approval status, and the public response omits review metadata. `saveApproved` persists one exact church-to-area mapping only for an approved record with a verification timestamp and source reference. The selected pilot scope is Johannesburg, South Africa, using four-digit postal codes. Production seeding remains blocked until an authoritative, licensed postal-code register and individually verified church-to-service-area mappings are available. Google Places content must not be copied into a static seed without separate rights; discovery candidates require an independently permitted source and manual review. No unverified church records, residential addresses, or precise visitor location data are added.
+The approved church directory and service-area contract is documented in [docs/day-07-approved-church-directory-and-service-areas.md](docs/day-07-approved-church-directory-and-service-areas.md). `GET /v1/churches?areaCode=...` uses the `ChurchDirectoryService` and `ChurchDirectoryRepository` for exact area-code lookup and approved entries only; the DynamoDB adapter filters by directory entity type and approval status, and the public response omits review metadata. `saveApproved` persists one exact church-to-area mapping only for an approved record with a verification timestamp and source reference. The initial pilot seed maps House of Treasures Ministries to postcode `1800`, based on project-owner attestation that the church confirmed that service area. Only that confirmed code is included; additional coverage is not inferred. The seed also includes the owner-approved public church address. Run it with `mvn -DskipTests exec:java "-Dexec.mainClass=com.saved2serve.seed.ChurchDirectorySeed"` after setting `SAVED2SERVE_TABLE_NAME`, `SAVED2SERVE_KMS_KEY_ID`, and AWS credentials for the intended account. No AWS table or credentials are configured in this checkout, so no live database write has been performed.
 
 ## Java and dependency baseline
 
@@ -106,7 +106,7 @@ The Lambda bootstrap is intentionally minimal and designed to support local and 
 
 The project keeps the MVP intentionally narrow and privacy preserving:
 
-- public records are treated as pending review and never automatically published
+- public records require explicit approval and are never automatically published
 - only minimal fields are collected, with area-code matching instead of precise location data
 - full residential addresses, exact coordinates, and sensitive metadata are rejected
 - admin-only review flows remain protected by Cognito/JWT-based authorization
