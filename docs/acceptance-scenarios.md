@@ -25,6 +25,7 @@ See the README for the full implementation summary and supporting project detail
 
 - pending, rejected, and inactive churches are not returned by public directory lookups
 - an approved church is returned only for its explicitly listed active service-area codes
+- an approved seed mapping requires a verification timestamp and internal source reference, neither of which is returned publicly
 - a code prefix, a nearby area, or a code with a different leading zero does not create a match
 - directory responses expose only the church ID, verified public name, and optional website
 - the Johannesburg pilot directory stays empty until an authorized postal-code register and verified church records are available
