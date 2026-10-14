@@ -25,6 +25,13 @@ or verification date, and approval evidence. A listing on a map is a lead, not
 proof that a church authorizes a public directory listing or serves a particular
 postal area.
 
+One permitted alternative for discovering candidate places is
+[OpenStreetMap](https://www.openstreetmap.org/copyright), whose data is
+available under the Open Database License (ODbL). Provide the required
+attribution, identify the license, and review ODbL share-alike obligations
+before distributing derived data. OSM tags still do not establish a church's
+approved status or its service-area postcodes; verify those independently.
+
 ## Candidate review and area mapping
 
 Imported records must start as `PENDING_REVIEW`. They are not part of the public
