@@ -5,7 +5,9 @@
 This document defines the MVP data contract for the public church directory and
 its service areas. The repository does not contain a verified church list or an
 agreed operating geography, so it intentionally adds no live church records.
-Only records verified and approved by the project owner should be loaded.
+Only records verified and approved by the project owner should be loaded. The
+candidate import process and current readiness blockers are documented in
+[Day 07 - Seeding church candidates with explicit area mappings](day-07-seeding-church-candidates.md).
 
 ## Directory data
 
