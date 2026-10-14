@@ -125,6 +125,7 @@ class DynamoDbRecordMapperTest {
                 "churchId", string("church-123"),
                 "displayName", string("Example Church"),
                 "publicWebsite", string("https://example.org"),
+                "publicAddress", string("14 Example Road"),
                 "areaCode", string("00123"),
                 "status", string("APPROVED"),
                 "verifiedAt", string(VERIFIED_AT.toString()),
@@ -140,7 +141,8 @@ class DynamoDbRecordMapperTest {
                 "00123",
                 ChurchDirectoryStatus.APPROVED,
                 VERIFIED_AT,
-                "internal-review-source"
+                "internal-review-source",
+                "14 Example Road"
         ), record);
         verify(kmsClient, never()).decrypt(any(DecryptRequest.class));
     }
@@ -155,7 +157,8 @@ class DynamoDbRecordMapperTest {
                 "00123",
                 ChurchDirectoryStatus.APPROVED,
                 VERIFIED_AT,
-                "internal-review-source"
+                "internal-review-source",
+                "14 Example Road"
         );
 
         Map<String, AttributeValue> item = mapper.toItem(church);
@@ -167,6 +170,7 @@ class DynamoDbRecordMapperTest {
         assertEquals("CHURCH#church-123#AREA#00123", item.get("GSI2SK").s());
         assertEquals(VERIFIED_AT.toString(), item.get("verifiedAt").s());
         assertEquals("internal-review-source", item.get("sourceReference").s());
+        assertEquals("14 Example Road", item.get("publicAddress").s());
         assertEquals(church, restored);
     }
 
