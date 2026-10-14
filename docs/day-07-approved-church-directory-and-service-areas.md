@@ -97,6 +97,9 @@ filters to approved directory records; the service also rechecks the status and
 code before projecting public fields without review metadata. A missing or
 blank code is rejected, leading zeroes are preserved, and no match returns an
 empty list. Multiple area mappings are stored as separate indexed directory
-items with the same stable church ID, one item per verified exact code. No
-directory records are populated until verified data and an operating geography
-are supplied.
+items with the same stable church ID, one item per verified exact code.
+`ChurchDirectoryRepository.saveApproved` persists a mapping only when its
+record is approved and includes both `verifiedAt` and `sourceReference`.
+Verification metadata stays internal and is not projected into public
+responses. No directory records are populated until verified data and an
+operating geography are supplied.
