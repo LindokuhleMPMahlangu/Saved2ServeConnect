@@ -2,7 +2,6 @@ package com.saved2serve.lambda;
 
 import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
-import com.saved2serve.domain.ChurchDirectoryEntry;
 import com.saved2serve.domain.ChurchDirectoryRecord;
 import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.repository.ChurchDirectoryRepository;
