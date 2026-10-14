@@ -117,7 +117,7 @@ To write the record to DynamoDB, configure AWS credentials for the intended
 account and set `SAVED2SERVE_TABLE_NAME` and `SAVED2SERVE_KMS_KEY_ID`, then run:
 
 ```powershell
-mvn -DskipTests exec:java "-Dexec.mainClass=com.saved2serve.seed.ChurchDirectorySeed"
+mvn -DskipTests package exec:java "-Dexec.mainClass=com.saved2serve.seed.ChurchDirectorySeed"
 ```
 
 The command writes an approved directory item through
