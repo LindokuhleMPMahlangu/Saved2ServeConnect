@@ -116,6 +116,19 @@ class DynamoDbSaved2ServeRepositoryTest {
     }
 
     @Test
+    void approvedChurchLookupReturnsEmptyListWhenNoDirectoryRecordsMatch() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(dynamoDbClient.query(any(QueryRequest.class)))
+                .thenReturn(QueryResponse.builder().items(List.of()).build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        assertEquals(List.of(), repository.findApprovedByAreaCode("99999"));
+    }
+
+    @Test
     void emailHashLookupUsesKeysOnlyCountQuery() {
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
         KmsClient kmsClient = mock(KmsClient.class);
