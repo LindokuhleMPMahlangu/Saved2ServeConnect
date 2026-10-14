@@ -52,6 +52,19 @@ class ChurchDirectoryServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.findByAreaCode("  "));
     }
 
+    @Test
+    void approvedChurchRequiresVerificationMetadata() {
+        assertThrows(IllegalArgumentException.class, () -> new ChurchDirectoryRecord(
+                "church-1",
+                "Church One",
+                "https://example.org",
+                "00123",
+                ChurchDirectoryStatus.APPROVED,
+                null,
+                " "
+        ));
+    }
+
     private static ChurchDirectoryRecord record(String id, String areaCode, ChurchDirectoryStatus status) {
         boolean approved = status == ChurchDirectoryStatus.APPROVED;
         return new ChurchDirectoryRecord(
