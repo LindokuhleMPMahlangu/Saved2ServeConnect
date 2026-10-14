@@ -1,6 +1,7 @@
 package com.saved2serve.persistence.dynamodb;
 
 import com.saved2serve.domain.Engagement;
+import com.saved2serve.domain.ChurchDirectoryRecord;
 import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
@@ -45,6 +46,7 @@ import static org.mockito.Mockito.when;
 
 class DynamoDbSaved2ServeRepositoryTest {
     private static final Instant CONSENTED_AT = Instant.parse("2026-10-24T10:15:30Z");
+    private static final Instant CHURCH_VERIFIED_AT = Instant.parse("2026-10-25T10:00:00Z");
     @Test
     void areaCodeLookupUsesAreaIndexAndMapsEveryPage() {
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
@@ -92,6 +94,8 @@ class DynamoDbSaved2ServeRepositoryTest {
                         "publicWebsite", string("https://example.org"),
                         "areaCode", string("00123"),
                         "status", string("APPROVED"),
+                        "verifiedAt", string(CHURCH_VERIFIED_AT.toString()),
+                        "sourceReference", string("internal-review-source"),
                         "entityType", string("CHURCH_DIRECTORY")
                 )))
                 .build());
@@ -113,6 +117,56 @@ class DynamoDbSaved2ServeRepositoryTest {
         assertEquals("CHURCH_DIRECTORY",
                 request.getValue().expressionAttributeValues().get(":entityType").s());
         assertEquals("APPROVED", request.getValue().expressionAttributeValues().get(":status").s());
+    }
+
+    @Test
+    void saveApprovedChurchPersistsDirectoryItem() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, mock(KmsClient.class), "Saved2ServeRecords", "alias/test-email-key"
+        );
+        ChurchDirectoryRecord church = new ChurchDirectoryRecord(
+                "church-123",
+                "Example Church",
+                "https://example.org",
+                "00123",
+                ChurchDirectoryStatus.APPROVED,
+                CHURCH_VERIFIED_AT,
+                "internal-review-source"
+        );
+
+        repository.saveApproved(church);
+
+        ArgumentCaptor<PutItemRequest> request = ArgumentCaptor.forClass(PutItemRequest.class);
+        verify(dynamoDbClient).putItem(request.capture());
+        Map<String, AttributeValue> item = request.getValue().item();
+        assertEquals("Saved2ServeRecords", request.getValue().tableName());
+        assertEquals("CHURCH#church-123", item.get("PK").s());
+        assertEquals("AREA#00123", item.get("SK").s());
+        assertEquals("CHURCH_DIRECTORY", item.get("entityType").s());
+        assertEquals("APPROVED", item.get("status").s());
+        assertEquals(CHURCH_VERIFIED_AT.toString(), item.get("verifiedAt").s());
+        assertEquals("internal-review-source", item.get("sourceReference").s());
+    }
+
+    @Test
+    void saveApprovedRejectsUnapprovedChurchWithoutWriting() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, mock(KmsClient.class), "Saved2ServeRecords", "alias/test-email-key"
+        );
+        ChurchDirectoryRecord pendingChurch = new ChurchDirectoryRecord(
+                "church-123",
+                "Example Church",
+                "https://example.org",
+                "00123",
+                ChurchDirectoryStatus.PENDING_REVIEW,
+                null,
+                "candidate-source"
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> repository.saveApproved(pendingChurch));
+        verify(dynamoDbClient, never()).putItem(any(PutItemRequest.class));
     }
 
     @Test
