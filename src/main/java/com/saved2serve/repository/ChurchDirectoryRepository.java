@@ -6,4 +6,6 @@ import java.util.List;
 
 public interface ChurchDirectoryRepository {
     List<ChurchDirectoryRecord> findApprovedByAreaCode(String areaCode);
+
+    void saveApproved(ChurchDirectoryRecord churchDirectoryRecord);
 }
