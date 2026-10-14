@@ -55,7 +55,7 @@ The public and private routes are intentionally small and explicit:
 ### Route intent
 
 - POST /v1/interests: create a visitor interest or registration record, limited to consented, voluntary submission.
-- GET /v1/churches: return approved churches by exact area code or region-level match policy.
+- GET /v1/churches: return approved churches for an exact active area-code match only; do not infer nearby or broader matches.
 - GET /v1/devotions: return approved devotion links only when they meet the allowed scheme and platform rules.
 - POST /v1/engagements: create leader help requests, suggestions, or testimony submissions in a review state.
 - GET /v1/admin/engagements: list submissions requiring admin review.
@@ -95,7 +95,7 @@ The system must not collect or require any of the following:
 - automatic publishing of testimonies
 - admin-only data in public APIs
 
-The platform must not infer or store precise home location data, and all location matching must remain area-code based and privacy-preserving.
+The platform must not infer or store precise home location data, and all location matching must remain area-code based and privacy-preserving. The approved directory and exact-match rules are defined in [Day 07 - Approved church directory and service-area data](day-07-approved-church-directory-and-service-areas.md).
 
 ## Privacy and security checklist
 
