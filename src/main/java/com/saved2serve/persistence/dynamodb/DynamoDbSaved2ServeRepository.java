@@ -1,6 +1,7 @@
 package com.saved2serve.persistence.dynamodb;
 
 import com.saved2serve.domain.ChurchDirectoryRecord;
+import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
@@ -58,6 +59,18 @@ public final class DynamoDbSaved2ServeRepository
         dynamoDbClient.putItem(PutItemRequest.builder()
                 .tableName(tableName)
                 .item(mapper.toItem(engagement))
+                .build());
+    }
+
+    @Override
+    public void saveApproved(ChurchDirectoryRecord churchDirectoryRecord) {
+        Objects.requireNonNull(churchDirectoryRecord, "churchDirectoryRecord must not be null");
+        if (churchDirectoryRecord.status() != ChurchDirectoryStatus.APPROVED) {
+            throw new IllegalArgumentException("Only approved churches can be seeded.");
+        }
+        dynamoDbClient.putItem(PutItemRequest.builder()
+                .tableName(tableName)
+                .item(mapper.toItem(churchDirectoryRecord))
                 .build());
     }
 
