@@ -3,10 +3,12 @@
 ## Purpose and current data status
 
 This document defines the MVP data contract for the public church directory and
-its service areas. The repository does not contain a verified church list or an
-agreed operating geography, so it intentionally adds no live church records.
-Only records verified and approved by the project owner should be loaded. The
-candidate import process and current readiness blockers are documented in
+its service areas. The pilot scope is Johannesburg, South Africa, using four-digit
+postal codes as area codes. The project still needs an authoritative, licensed
+postal-code register and individually verified church records with explicit
+service-area mappings, so it intentionally adds no live church records. Only
+records verified and approved by the project owner should be loaded. The
+candidate discovery process and current readiness blockers are documented in
 [Day 07 - Seeding church candidates with explicit area mappings](day-07-seeding-church-candidates.md).
 
 ## Directory data
@@ -69,8 +71,10 @@ leaving them in public results.
 
 The directory is not a user-submission or automatic-publishing feature.
 Church additions and changes require a separate authorized review workflow.
-Until that workflow and verified records exist, the public directory should
-remain empty rather than show placeholder or unapproved churches.
+Until an authorized data source, the canonical Johannesburg postal-code
+register, and verified records exist, the public directory should remain empty
+rather than show placeholder or unapproved churches. A church's own postal code
+does not by itself prove which postal areas it serves.
 
 ## Review evidence and acceptance scenarios
 
