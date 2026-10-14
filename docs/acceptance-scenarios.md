@@ -32,9 +32,12 @@ See the README for the full implementation summary and supporting project detail
 - service-area mappings are included only when verified against the canonical area register; mappings are never inferred from proximity or coordinates
 - blank lookup codes are rejected, surrounding whitespace is trimmed, and leading zeroes are preserved
 
-The endpoint, lookup service, mapper, and DynamoDB repository filter are covered
-by `ChurchDirectoryApiHandlerTest`, `ChurchDirectoryServiceTest`,
-`DynamoDbRecordMapperTest`, and `DynamoDbSaved2ServeRepositoryTest`.
+The endpoint returns an empty `churches` list for a code with no matches. The
+service excludes `PENDING_REVIEW`, `REJECTED`, and `INACTIVE` records, checks an
+exact code match, and the DynamoDB query adds both directory-type and approval
+filters. These checks are covered by `ChurchDirectoryApiHandlerTest`,
+`ChurchDirectoryServiceTest`, `DynamoDbRecordMapperTest`, and
+`DynamoDbSaved2ServeRepositoryTest`.
 See [day-07-approved-church-directory-and-service-areas.md](day-07-approved-church-directory-and-service-areas.md) for the data contract, approval rules, and review evidence.
 See [day-07-seeding-church-candidates.md](day-07-seeding-church-candidates.md) for the candidate-import workflow and readiness blockers.
 
