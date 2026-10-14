@@ -10,6 +10,7 @@ This file is a shorthand reference for the MVP acceptance scenarios. The complet
 - approved devotion links only over HTTPS
 - leader-only access through Cognito JWT authentication
 - review queue filtering and pagination for pending submissions
+- approved church results for an exact active area-code match, with an empty result when no approved church is listed
 
 ## Policy rules
 
@@ -19,6 +20,16 @@ This file is a shorthand reference for the MVP acceptance scenarios. The complet
 - admin routes require authentication and authorization
 
 See the README for the full implementation summary and supporting project details.
+
+## Day 07 directory review scenarios
+
+- pending, rejected, and inactive churches are not returned by public directory lookups
+- an approved church is returned only for its explicitly listed active service-area codes
+- a code prefix, a nearby area, or a code with a different leading zero does not create a match
+- directory responses expose only the verified public name and optional website
+- an unpopulated directory stays empty until verified church records and an operating geography are approved
+
+See [day-07-approved-church-directory-and-service-areas.md](day-07-approved-church-directory-and-service-areas.md) for the data contract, approval rules, and review evidence.
 
   Scenario: Leader filters the review queue to only unreviewed items
     Given a leader is authenticated with a valid Cognito JWT
