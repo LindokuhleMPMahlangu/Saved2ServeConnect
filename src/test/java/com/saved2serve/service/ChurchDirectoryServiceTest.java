@@ -6,6 +6,7 @@ import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.repository.ChurchDirectoryRepository;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +53,15 @@ class ChurchDirectoryServiceTest {
     }
 
     private static ChurchDirectoryRecord record(String id, String areaCode, ChurchDirectoryStatus status) {
-        return new ChurchDirectoryRecord(id, "Church " + id, "https://example.org", areaCode, status);
+        boolean approved = status == ChurchDirectoryStatus.APPROVED;
+        return new ChurchDirectoryRecord(
+                id,
+                "Church " + id,
+                "https://example.org",
+                areaCode,
+                status,
+                approved ? Instant.parse("2026-10-25T10:00:00Z") : null,
+                approved ? "verified-source:" + id : ""
+        );
     }
 }
