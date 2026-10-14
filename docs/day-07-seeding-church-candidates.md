@@ -1,11 +1,14 @@
 # Day 07 - Seeding church candidates with explicit area mappings
 
-## Current status: blocked on approved source data
+## Current status: one approved pilot mapping
 
 The pilot scope is Johannesburg, South Africa, using four-digit postal codes as
-area codes. No church records are seeded yet: an authoritative, licensed
-Johannesburg postal-code register and verified church-to-service-area mappings
-have not been supplied.
+area codes. One project-owner-approved pilot record is available:
+House of Treasures Ministries, mapped to postcode `1800` based on the owner's
+report that the church confirmed it serves that area. This is an owner
+attestation, not an independent verification of the website or postal-code
+register. No other coverage is inferred from the church's address or its broad
+claim to serve Johannesburg and surrounding locations.
 
 ## Candidate discovery and source restrictions
 
@@ -70,6 +73,7 @@ The reviewed record should conform to the directory contract in
 | `displayName` | Candidate value; verify before approval. |
 | `serviceAreaCodes` | Only explicitly verified canonical codes; otherwise empty and not approvable for matching. |
 | `publicWebsite` | Optional candidate value; verify and require HTTPS before approval. |
+| `publicAddress` | Optional church location; include publicly only with explicit owner approval. |
 | `status` | Always `PENDING_REVIEW` on import. |
 | `verifiedAt` | Blank until a reviewer approves the record. |
 | `sourceReference` | Internal source identifier and retrieval-date reference; do not expose publicly. |
@@ -100,6 +104,24 @@ Review checks:
 | A candidate passes review | Only verified explicit codes are listed, and the record may be approved. |
 | A lookup has no approved exact match | It returns no church rather than broadening the search. |
 
-This is documentation and review evidence only. No live records, external API
-integration, or public seed operation is included until the source, postal-code
-register, and church-specific service-area evidence above are available.
+## Approved pilot seed
+
+`com.saved2serve.seed.ChurchDirectorySeed` contains the owner-approved
+House of Treasures Ministries record for area code `1800`, including the
+owner-provided public website and the address the owner requested be displayed.
+The verification source reference records the project owner's attestation that
+the church confirmed postcode `1800`; it does not claim independent validation.
+Only `1800` is included until further postcodes are explicitly confirmed.
+
+To write the record to DynamoDB, configure AWS credentials for the intended
+account and set `SAVED2SERVE_TABLE_NAME` and `SAVED2SERVE_KMS_KEY_ID`, then run:
+
+```powershell
+mvn -DskipTests exec:java "-Dexec.mainClass=com.saved2serve.seed.ChurchDirectorySeed"
+```
+
+The command writes an approved directory item through
+`DynamoDbSaved2ServeRepository.saveApproved`. It is an upsert for the stable
+church-and-area key, so review the source values and target AWS account before
+running it. This checkout has no configured AWS table or credentials; the seed
+is implemented and testable locally, but has not been written to a live table.
