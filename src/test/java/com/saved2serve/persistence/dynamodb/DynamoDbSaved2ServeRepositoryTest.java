@@ -147,6 +147,7 @@ class DynamoDbSaved2ServeRepositoryTest {
         assertEquals("APPROVED", item.get("status").s());
         assertEquals(CHURCH_VERIFIED_AT.toString(), item.get("verifiedAt").s());
         assertEquals("internal-review-source", item.get("sourceReference").s());
+        assertEquals("", item.get("publicAddress").s());
     }
 
     @Test
