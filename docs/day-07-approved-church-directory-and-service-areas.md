@@ -4,10 +4,12 @@
 
 This document defines the MVP data contract for the public church directory and
 its service areas. The pilot scope is Johannesburg, South Africa, using four-digit
-postal codes as area codes. The project still needs an authoritative, licensed
-postal-code register and individually verified church records with explicit
-service-area mappings, so it intentionally adds no live church records. Only
-records verified and approved by the project owner should be loaded. The
+postal codes as area codes. Records are loaded only after the project owner approves verified church
+information and explicit service-area mappings. The initial pilot seed contains
+one owner-approved mapping for House of Treasures Ministries at area code `1800`,
+based on the project owner's report that the church confirmed this service area.
+No additional postcodes are inferred from its address or broad Johannesburg
+coverage statement. The
 candidate discovery process and current readiness blockers are documented in
 [Day 07 - Seeding church candidates with explicit area mappings](day-07-seeding-church-candidates.md).
 
@@ -21,6 +23,7 @@ Each church record should contain:
 | `displayName` | Required | Verified public name of the church. |
 | `serviceAreaCodes` | Required | One or more codes from the approved service-area register. |
 | `publicWebsite` | Optional | Verified public URL; use HTTPS. Do not add personal contact details. |
+| `publicAddress` | Optional | Church location approved for public display; never a visitor's residential address. |
 | `status` | Required | `PENDING_REVIEW`, `APPROVED`, `REJECTED`, or `INACTIVE`. |
 | `verifiedAt` | Required for approval | Timestamp when the church information was checked. |
 | `sourceReference` | Required for approval | Internal reference to the source used to verify the record. |
@@ -55,8 +58,9 @@ infer coverage for unlisted codes.
 - Return only approved churches linked to that exact active code. If there are
   no matches, return an empty result rather than widening the search.
 - Return only the church's opaque public `churchId`, verified public display
-  name, and optional public website. Do not expose review status, source
-  references, reviewer identity, or unrelated service-area memberships.
+  name, optional public website, and any church address explicitly approved for
+  public display. Do not expose review status, source references, reviewer
+  identity, or unrelated service-area memberships.
 - Keep interest matching at area-code level. Do not collect or derive a
   visitor's street address, GPS coordinates, or precise location.
 
@@ -71,10 +75,11 @@ leaving them in public results.
 
 The directory is not a user-submission or automatic-publishing feature.
 Church additions and changes require a separate authorized review workflow.
-Until an authorized data source, the canonical Johannesburg postal-code
-register, and verified records exist, the public directory should remain empty
-rather than show placeholder or unapproved churches. A church's own postal code
-does not by itself prove which postal areas it serves.
+A church's own postal code does not by itself prove which postal areas it
+serves. The current pilot mapping is based on the project owner's attestation of
+church confirmation, recorded as the seed's internal source reference; it is
+not independent verification of the church website or an authoritative postal
+code register.
 
 ## Review evidence and acceptance scenarios
 
@@ -82,7 +87,7 @@ The following checks define review evidence for this deliverable:
 
 | Check | Expected outcome |
 | --- | --- |
-| No verified church list or geography is available | No live or placeholder church records are added. |
+| A church's service postcode is explicitly confirmed and approved by the project owner | The approved seed maps that church only to the confirmed code. |
 | A church is pending, rejected, or inactive | It is excluded from public results. |
 | A church is approved for one active code | It is returned only for an exact match on that code. |
 | A lookup differs by prefix or leading zero from the registered code | It is not coerced into a different code or treated as a match. |
@@ -102,4 +107,7 @@ items with the same stable church ID, one item per verified exact code.
 record is approved and includes both `verifiedAt` and `sourceReference`.
 Verification metadata stays internal and is not projected into public
 responses. No directory records are populated until verified data and an
-operating geography are supplied.
+operating geography are supplied. `ChurchDirectorySeed` provides the approved
+House of Treasures Ministries mapping for area code `1800` and its owner-approved
+public church address; run it only against the configured DynamoDB table after
+reviewing the seed values and AWS account.
