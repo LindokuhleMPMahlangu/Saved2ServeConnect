@@ -27,8 +27,8 @@ See the README for the full implementation summary and supporting project detail
 - an approved church is returned only for its explicitly listed active service-area codes
 - a code prefix, a nearby area, or a code with a different leading zero does not create a match
 - directory responses expose only the church ID, verified public name, and optional website
-- an unpopulated directory stays empty until verified church records and an operating geography are approved
-- API-discovered church candidates remain pending review and are not exposed as approved directory records
+- the Johannesburg pilot directory stays empty until an authorized postal-code register and verified church records are available
+- Google Places content is not copied into static seed records unless separate rights permit it; any permitted candidate source is independently verified before publication
 - service-area mappings are included only when verified against the canonical area register; mappings are never inferred from proximity or coordinates
 - blank lookup codes are rejected, surrounding whitespace is trimmed, and leading zeroes are preserved
 
