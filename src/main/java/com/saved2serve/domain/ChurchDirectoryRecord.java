@@ -1,7 +1,7 @@
 package com.saved2serve.domain;
 
-import java.util.Objects;
 import java.time.Instant;
+import java.util.Objects;
 
 public record ChurchDirectoryRecord(
         String churchId,
