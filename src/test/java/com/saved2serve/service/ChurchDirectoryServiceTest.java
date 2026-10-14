@@ -4,6 +4,7 @@ import com.saved2serve.domain.ChurchDirectoryEntry;
 import com.saved2serve.domain.ChurchDirectoryRecord;
 import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.repository.ChurchDirectoryRepository;
+import com.saved2serve.seed.ChurchDirectorySeed;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -16,6 +17,23 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChurchDirectoryServiceTest {
+    @Test
+    void pilotChurchMatchesOnlyItsConfirmedPostcode() {
+        ChurchDirectoryRepository repository = mock(ChurchDirectoryRepository.class);
+        when(repository.findApprovedByAreaCode("1800"))
+                .thenReturn(List.of(ChurchDirectorySeed.HOUSE_OF_TREASURES));
+        when(repository.findApprovedByAreaCode("2091")).thenReturn(List.of());
+        ChurchDirectoryService service = new ChurchDirectoryService(repository);
+
+        assertEquals(List.of(new ChurchDirectoryEntry(
+                "house-of-treasures-ministries",
+                "House of Treasures Ministries",
+                "https://houseoftreasuresministries.com",
+                "14 Impala Road, Rispark, Johannesburg South, 2091, South Africa"
+        )), service.findByAreaCode("1800"));
+        assertEquals(List.of(), service.findByAreaCode("2091"));
+    }
+
     @Test
     void returnsOnlyApprovedExactAreaMatchesAndPublicFields() {
         ChurchDirectoryRepository repository = mock(ChurchDirectoryRepository.class);
@@ -30,7 +48,9 @@ class ChurchDirectoryServiceTest {
 
         List<ChurchDirectoryEntry> results = service.findByAreaCode(" 00123 ");
 
-        assertEquals(List.of(new ChurchDirectoryEntry("approved", "Church approved", "https://example.org")),
+        assertEquals(List.of(new ChurchDirectoryEntry(
+                        "approved", "Church approved", "https://example.org", ""
+                )),
                 results);
         verify(repository).findApprovedByAreaCode("00123");
     }
