@@ -42,6 +42,20 @@ filters. These checks are covered by `ChurchDirectoryApiHandlerTest`,
 See [day-07-approved-church-directory-and-service-areas.md](day-07-approved-church-directory-and-service-areas.md) for the data contract, approval rules, and review evidence.
 See [day-07-seeding-church-candidates.md](day-07-seeding-church-candidates.md) for the candidate-import workflow and readiness blockers.
 
+## Day 08 devotion-link review scenarios
+
+- only HTTPS links on the exact approved YouTube hosts pass URL validation; passing validation alone does not approve a link
+- devotion candidates begin as `PENDING_REVIEW` and are never auto-published
+- an authorized leader verifies the content, source, and permission to share before approval
+- `sourceReference`, `verifiedAt`, and `reviewedBy` are retained internally for approved records and omitted from public responses
+- pending, rejected, or inactive links are excluded from public results
+- changed destinations, unavailable content, or lost sharing permission require removal from public results and re-review
+
+The URL allowlist checks are covered by `Saved2ServeValidatorTest`. The full
+field contract, source rules, and approval workflow are specified in
+[day-08-devotion-link-fields-source-and-approval.md](day-08-devotion-link-fields-source-and-approval.md);
+the devotion record lifecycle and API are not yet implemented.
+
   Scenario: Leader filters the review queue to only unreviewed items
     Given a leader is authenticated with a valid Cognito JWT
     And the system contains both pending and reviewed submissions
