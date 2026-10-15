@@ -65,7 +65,7 @@ The approved church directory and service-area contract is documented in [docs/d
 
 ## Day 08 deliverable included
 
-The devotion-link field contract, approved source rules, leader review workflow, public-data boundary, and review scenarios are documented in [docs/day-08-devotion-link-fields-source-and-approval.md](docs/day-08-devotion-link-fields-source-and-approval.md). Existing validation accepts only HTTPS links on the exact YouTube hosts in the allowlist, with focused tests in `Saved2ServeValidatorTest`. Validation does not grant approval: the devotion record lifecycle, storage, admin review flow, and public endpoint remain unimplemented and must not be treated as available MVP functionality.
+The devotion-link field contract, approved source rules, leader review workflow, public-data boundary, and review scenarios are documented in [docs/day-08-devotion-link-fields-source-and-approval.md](docs/day-08-devotion-link-fields-source-and-approval.md). `DevotionLinkRepository` stores only approved records with required provenance and verification metadata, and retrieves published links through the shared DynamoDB status index. URL validation accepts only HTTPS links on the exact YouTube hosts in the allowlist. Focused validation, mapping, and repository tests cover these boundaries. Candidate review management and the public/admin devotion APIs remain unimplemented; repository results include internal review metadata and must not be returned directly from public handlers.
 
 ## Java and dependency baseline
 
