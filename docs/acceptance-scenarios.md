@@ -51,10 +51,12 @@ See [day-07-seeding-church-candidates.md](day-07-seeding-church-candidates.md) f
 - pending, rejected, or inactive links are excluded from public results
 - changed destinations, unavailable content, or lost sharing permission require removal from public results and re-review
 
-The URL allowlist checks are covered by `Saved2ServeValidatorTest`. The full
-field contract, source rules, and approval workflow are specified in
-[day-08-devotion-link-fields-source-and-approval.md](day-08-devotion-link-fields-source-and-approval.md);
-the devotion record lifecycle and API are not yet implemented.
+The URL allowlist checks are covered by `Saved2ServeValidatorTest`. Approved
+record mapping and repository storage/retrieval are covered by
+`DevotionLinkRecordMapperTest` and `DevotionLinkRepositoryTest`. The full field
+contract, source rules, and approval workflow are specified in
+[day-08-devotion-link-fields-source-and-approval.md](day-08-devotion-link-fields-source-and-approval.md).
+Candidate lifecycle management and public/admin APIs are not yet implemented.
 
   Scenario: Leader filters the review queue to only unreviewed items
     Given a leader is authenticated with a valid Cognito JWT
