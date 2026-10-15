@@ -12,7 +12,6 @@ import com.saved2serve.repository.DevotionLinkRepository;
 import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.repository.Page;
-import com.saved2serve.validation.Saved2ServeValidator;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
@@ -84,7 +83,6 @@ public final class DynamoDbSaved2ServeRepository
         if (devotionLink.status() != DevotionLinkStatus.APPROVED) {
             throw new IllegalArgumentException("Only approved devotion links can be published.");
         }
-        validateDevotionUrl(devotionLink.url());
         dynamoDbClient.putItem(PutItemRequest.builder()
                 .tableName(tableName)
                 .item(mapper.toItem(devotionLink))
@@ -296,13 +294,6 @@ public final class DynamoDbSaved2ServeRepository
     private static void validatePageSize(int pageSize) {
         if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new IllegalArgumentException("pageSize must be between 1 and " + MAX_PAGE_SIZE + ".");
-        }
-    }
-
-    private static void validateDevotionUrl(String url) {
-        Saved2ServeValidator.ValidationResult result = Saved2ServeValidator.validateDevotionLink(url);
-        if (!result.valid()) {
-            throw new IllegalArgumentException("Devotion link URL is not approved.");
         }
     }
 
