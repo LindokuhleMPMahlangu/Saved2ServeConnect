@@ -2,13 +2,17 @@ package com.saved2serve.persistence.dynamodb;
 
 import com.saved2serve.domain.ChurchDirectoryRecord;
 import com.saved2serve.domain.ChurchDirectoryStatus;
+import com.saved2serve.domain.DevotionLink;
+import com.saved2serve.domain.DevotionLinkStatus;
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.ChurchDirectoryRepository;
+import com.saved2serve.repository.DevotionLinkRepository;
 import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.repository.Page;
+import com.saved2serve.validation.Saved2ServeValidator;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
@@ -25,7 +29,7 @@ import java.util.Map;
 import java.util.Objects;
 
 public final class DynamoDbSaved2ServeRepository
-        implements InterestRepository, EngagementRepository, ChurchDirectoryRepository {
+        implements InterestRepository, EngagementRepository, ChurchDirectoryRepository, DevotionLinkRepository {
     public static final String STATUS_CREATED_AT_INDEX = "StatusCreatedAtIndex";
     public static final String AREA_CREATED_AT_INDEX = "AreaCreatedAtIndex";
     public static final String EMAIL_HASH_INDEX = "EmailHashIndex";
@@ -71,6 +75,19 @@ public final class DynamoDbSaved2ServeRepository
         dynamoDbClient.putItem(PutItemRequest.builder()
                 .tableName(tableName)
                 .item(mapper.toItem(churchDirectoryRecord))
+                .build());
+    }
+
+    @Override
+    public void saveApproved(DevotionLink devotionLink) {
+        Objects.requireNonNull(devotionLink, "devotionLink must not be null");
+        if (devotionLink.status() != DevotionLinkStatus.APPROVED) {
+            throw new IllegalArgumentException("Only approved devotion links can be published.");
+        }
+        validateDevotionUrl(devotionLink.url());
+        dynamoDbClient.putItem(PutItemRequest.builder()
+                .tableName(tableName)
+                .item(mapper.toItem(devotionLink))
                 .build());
     }
 
@@ -238,6 +255,28 @@ public final class DynamoDbSaved2ServeRepository
         return queryAll(request).stream().map(mapper::toChurchDirectoryRecord).toList();
     }
 
+    @Override
+    public List<DevotionLink> findPublished() {
+        QueryRequest request = QueryRequest.builder()
+                .tableName(tableName)
+                .indexName(STATUS_CREATED_AT_INDEX)
+                .keyConditionExpression("#statusKey = :statusKey")
+                .filterExpression("#entityType = :entityType AND #status = :status")
+                .expressionAttributeNames(Map.of(
+                        "#statusKey", DynamoDbRecordMapper.GSI1PK,
+                        "#entityType", "entityType",
+                        "#status", "status"
+                ))
+                .expressionAttributeValues(Map.of(
+                        ":statusKey", DynamoDbRecordMapper.string("STATUS#APPROVED"),
+                        ":entityType", DynamoDbRecordMapper.string("DEVOTION_LINK"),
+                        ":status", DynamoDbRecordMapper.string(DevotionLinkStatus.APPROVED.name())
+                ))
+                .scanIndexForward(false)
+                .build();
+        return queryAll(request).stream().map(mapper::toDevotionLink).toList();
+    }
+
     private List<Map<String, AttributeValue>> queryAll(QueryRequest initialRequest) {
         List<Map<String, AttributeValue>> items = new ArrayList<>();
         QueryRequest request = initialRequest;
@@ -257,6 +296,13 @@ public final class DynamoDbSaved2ServeRepository
     private static void validatePageSize(int pageSize) {
         if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new IllegalArgumentException("pageSize must be between 1 and " + MAX_PAGE_SIZE + ".");
+        }
+    }
+
+    private static void validateDevotionUrl(String url) {
+        Saved2ServeValidator.ValidationResult result = Saved2ServeValidator.validateDevotionLink(url);
+        if (!result.valid()) {
+            throw new IllegalArgumentException("Devotion link URL is not approved.");
         }
     }
 
