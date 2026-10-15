@@ -74,12 +74,14 @@ items and maps every result page. Repository records include internal review
 metadata; repository calls do not perform authorization and their results must
 not be exposed directly from a public handler.
 
-A future public devotion endpoint may include only `devotionId`, `title`,
-`url`, and `platform`. It must omit `sourceReference`, `reviewedBy`,
-`reviewNote`, and other internal review metadata. Admin review and status
-changes must require authenticated, authorized access. No personal viewer
-profile, viewing history, precise location, or user-submitted testimony is
-part of this feature.
+`GET /v1/devotions` returns a JSON object with a `devotions` array containing
+only `devotionId`, `title`, `url`, and `platform`. It omits `sourceReference`,
+`reviewedBy`, `reviewNote`, and other internal review metadata, and returns an
+empty array when no links are publishable. The endpoint is read-only and does
+not accept query parameters. Admin review and status changes must require
+authenticated, authorized access. No personal viewer profile, viewing
+history, precise location, or user-submitted testimony is part of this
+feature.
 
 ## Review evidence and acceptance scenarios
 
@@ -92,6 +94,9 @@ part of this feature.
 | An approved link is stored | Required provenance and review metadata are persisted internally. | Covered by `DevotionLinkRecordMapperTest` and `DevotionLinkRepositoryTest.savesOnlyApprovedDevotionLinks`. |
 | Published links are retrieved | The repository queries approved records of the devotion-link entity type, newest first. | Covered by `DevotionLinkRepositoryTest.retrievesApprovedLinksUsingStatusIndexAndEntityFilters`. |
 | A rejected or inactive link is retrieved | It is excluded by the approved status query. | Enforced by the repository status key and entity/status filters. |
+| A client calls `GET /v1/devotions` | Only the four public fields are serialized for approved, valid links; internal review metadata is omitted. | Covered by `DevotionApiHandlerTest` and `DevotionServiceTest`. |
+| No devotion is publishable | The endpoint returns `200` with an empty `devotions` array. | Covered by `DevotionApiHandlerTest.returnsEmptyListWhenNoApprovedLinksExist`. |
+| The route receives an unsupported method, path, or query parameter | The endpoint returns an appropriate 4xx response without querying unrelated records. | Covered by `DevotionApiHandlerTest.rejectsUnsupportedMethodPathAndQueryParameters`. |
 | An approved link changes destination or loses permission | It is removed from public results pending re-review. | Contractual review scenario. |
 
 The implemented URL-validation evidence can be run with:
@@ -100,7 +105,7 @@ The implemented URL-validation evidence can be run with:
 mvn -Dtest=Saved2ServeValidatorTest test
 ```
 
-Candidate lifecycle management, the admin review endpoint, and public
-`GET /v1/devotions` behavior remain future implementation work; this document
-defines their acceptance contract without implying those runtime capabilities
-already exist.
+Candidate lifecycle management and the admin review endpoint remain future
+implementation work. The public endpoint is implemented by
+`DevotionApiHandler` and `DevotionService`; deploy it on API Gateway as
+`GET /v1/devotions` with the required table and KMS environment configuration.
