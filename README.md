@@ -63,6 +63,10 @@ The `POST /v1/interests` API Gateway HTTP API Lambda handler validates JSON cont
 
 The approved church directory and service-area contract is documented in [docs/day-07-approved-church-directory-and-service-areas.md](docs/day-07-approved-church-directory-and-service-areas.md). `GET /v1/churches?areaCode=...` uses the `ChurchDirectoryService` and `ChurchDirectoryRepository` for exact area-code lookup and approved entries only; the DynamoDB adapter filters by directory entity type and approval status, and the public response omits review metadata. `saveApproved` persists one exact church-to-area mapping only for an approved record with a verification timestamp and source reference. The initial pilot seed maps House of Treasures Ministries to postcode `1800`, based on project-owner attestation that the church confirmed that service area. Only that confirmed code is included; additional coverage is not inferred. The seed also includes the owner-approved public church address. Run it with `mvn -DskipTests package exec:java "-Dexec.mainClass=com.saved2serve.seed.ChurchDirectorySeed"` after setting `SAVED2SERVE_TABLE_NAME`, `SAVED2SERVE_KMS_KEY_ID`, and AWS credentials for the intended account. No AWS table target is configured in this checkout, so no live database write has been performed.
 
+## Day 08 deliverable included
+
+The devotion-link field contract, approved source rules, leader review workflow, public-data boundary, and review scenarios are documented in [docs/day-08-devotion-link-fields-source-and-approval.md](docs/day-08-devotion-link-fields-source-and-approval.md). Existing validation accepts only HTTPS links on the exact YouTube hosts in the allowlist, with focused tests in `Saved2ServeValidatorTest`. Validation does not grant approval: the devotion record lifecycle, storage, admin review flow, and public endpoint remain unimplemented and must not be treated as available MVP functionality.
+
 ## Java and dependency baseline
 
 - Java 21
