@@ -49,6 +49,8 @@ See [day-07-seeding-church-candidates.md](day-07-seeding-church-candidates.md) f
 - an authorized leader verifies the content, source, and permission to share before approval
 - `sourceReference`, `verifiedAt`, and `reviewedBy` are retained internally for approved records and omitted from public responses
 - pending, rejected, or inactive links are excluded from public results
+- `GET /v1/devotions` returns only `devotionId`, `title`, `url`, and `platform` for approved, valid links
+- the devotion endpoint returns an empty list when there are no publishable records and rejects unsupported query parameters
 - changed destinations, unavailable content, or lost sharing permission require removal from public results and re-review
 
 The URL allowlist checks are covered by `Saved2ServeValidatorTest`. Approved
@@ -56,7 +58,9 @@ record mapping and repository storage/retrieval are covered by
 `DevotionLinkRecordMapperTest` and `DevotionLinkRepositoryTest`. The full field
 contract, source rules, and approval workflow are specified in
 [day-08-devotion-link-fields-source-and-approval.md](day-08-devotion-link-fields-source-and-approval.md).
-Candidate lifecycle management and public/admin APIs are not yet implemented.
+`DevotionApiHandlerTest` and `DevotionServiceTest` cover the public endpoint's
+safe response projection, approval filtering, and invalid-request behavior.
+Candidate lifecycle management and the admin API are not yet implemented.
 
   Scenario: Leader filters the review queue to only unreviewed items
     Given a leader is authenticated with a valid Cognito JWT
