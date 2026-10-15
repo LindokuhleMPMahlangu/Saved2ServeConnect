@@ -16,8 +16,14 @@ class RepositoryInterfacesTest {
         assertTrue(InterestRepository.class.isInterface());
         assertTrue(EngagementRepository.class.isInterface());
         assertTrue(ChurchDirectoryRepository.class.isInterface());
+        assertTrue(DevotionLinkRepository.class.isInterface());
 
-        Stream.of(InterestRepository.class, EngagementRepository.class, ChurchDirectoryRepository.class)
+        Stream.of(
+                        InterestRepository.class,
+                        EngagementRepository.class,
+                        ChurchDirectoryRepository.class,
+                        DevotionLinkRepository.class
+                )
                 .flatMap(repository -> Arrays.stream(repository.getDeclaredMethods()))
                 .forEach(RepositoryInterfacesTest::assertNoAwsSdkTypes);
     }
