@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -92,7 +93,7 @@ class DevotionLinkRepositoryTest {
         assertEquals("STATUS#APPROVED", request.getValue().expressionAttributeValues().get(":statusKey").s());
         assertEquals("DEVOTION_LINK", request.getValue().expressionAttributeValues().get(":entityType").s());
         assertEquals("APPROVED", request.getValue().expressionAttributeValues().get(":status").s());
-        assertEquals(false, request.getValue().scanIndexForward());
+        assertFalse(request.getValue().scanIndexForward());
     }
 
     private static DynamoDbSaved2ServeRepository repository(DynamoDbClient dynamoDbClient) {
