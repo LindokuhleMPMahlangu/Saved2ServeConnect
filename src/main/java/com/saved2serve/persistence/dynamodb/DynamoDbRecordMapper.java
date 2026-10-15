@@ -2,11 +2,14 @@ package com.saved2serve.persistence.dynamodb;
 
 import com.saved2serve.domain.ChurchDirectoryRecord;
 import com.saved2serve.domain.ChurchDirectoryStatus;
+import com.saved2serve.domain.DevotionLink;
+import com.saved2serve.domain.DevotionLinkStatus;
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.util.EmailHasher;
+import com.saved2serve.validation.Saved2ServeValidator;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.kms.KmsClient;
@@ -121,6 +124,35 @@ public final class DynamoDbRecordMapper {
         return Map.copyOf(item);
     }
 
+    public Map<String, AttributeValue> toItem(DevotionLink devotionLink) {
+        Objects.requireNonNull(devotionLink, "devotionLink must not be null");
+        if (devotionLink.status() != DevotionLinkStatus.APPROVED) {
+            throw new IllegalArgumentException("Only approved devotion links can be published.");
+        }
+        validateDevotionUrl(devotionLink.url());
+
+        String createdAt = CREATED_AT_FORMAT.format(devotionLink.submittedAt());
+        Map<String, AttributeValue> item = new HashMap<>();
+        item.put(PK, string("DEVOTION#" + devotionLink.devotionId()));
+        item.put(SK, string("LINK"));
+        item.put("recordId", string(devotionLink.devotionId()));
+        item.put("entityType", string("DEVOTION_LINK"));
+        item.put("createdAt", string(createdAt));
+        item.put("devotionId", string(devotionLink.devotionId()));
+        item.put("title", string(devotionLink.title()));
+        item.put("url", string(devotionLink.url()));
+        item.put("platform", string(devotionLink.platform()));
+        item.put("status", string(devotionLink.status().name()));
+        item.put("sourceReference", string(devotionLink.sourceReference()));
+        item.put("submittedAt", string(devotionLink.submittedAt().toString()));
+        item.put("verifiedAt", string(devotionLink.verifiedAt().toString()));
+        item.put("reviewedBy", string(devotionLink.reviewedBy()));
+        item.put("reviewNote", string(devotionLink.reviewNote()));
+        item.put(GSI1PK, string("STATUS#" + devotionLink.status().name()));
+        item.put(GSI1SK, string(createdAtKey(createdAt, devotionLink.devotionId())));
+        return Map.copyOf(item);
+    }
+
     public Interest toInterest(Map<String, AttributeValue> item) {
         String recordId = requiredString(item, "recordId");
         return new Interest(
@@ -158,6 +190,28 @@ public final class DynamoDbRecordMapper {
                 optionalInstant(item, "verifiedAt"),
                 optionalString(item, "sourceReference"),
                 optionalString(item, "publicAddress")
+        );
+    }
+
+    public DevotionLink toDevotionLink(Map<String, AttributeValue> item) {
+        String url = requiredString(item, "url");
+        validateDevotionUrl(url);
+        if (DevotionLinkStatus.valueOf(requiredString(item, "status")) != DevotionLinkStatus.APPROVED) {
+            throw new IllegalStateException("Only approved devotion links can be published.");
+        }
+        if (!"YOUTUBE".equals(requiredString(item, "platform"))) {
+            throw new IllegalStateException("DynamoDB devotion link has an unsupported platform.");
+        }
+        return new DevotionLink(
+                requiredString(item, "devotionId"),
+                requiredString(item, "title"),
+                url,
+                DevotionLinkStatus.APPROVED,
+                requiredString(item, "sourceReference"),
+                Instant.parse(requiredString(item, "submittedAt")),
+                Instant.parse(requiredString(item, "verifiedAt")),
+                requiredString(item, "reviewedBy"),
+                optionalString(item, "reviewNote")
         );
     }
 
@@ -265,5 +319,12 @@ public final class DynamoDbRecordMapper {
             throw new IllegalArgumentException(name + " must not be null or blank.");
         }
         return value;
+    }
+
+    private static void validateDevotionUrl(String url) {
+        Saved2ServeValidator.ValidationResult result = Saved2ServeValidator.validateDevotionLink(url);
+        if (!result.valid()) {
+            throw new IllegalArgumentException("Devotion link URL is not approved.");
+        }
     }
 }
