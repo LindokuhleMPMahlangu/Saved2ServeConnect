@@ -2,11 +2,13 @@
 
 ## Purpose and MVP boundary
 
-This document defines the MVP contract for curated devotion links. It does not
-add a submission endpoint, public API, database table, or automated publishing
-workflow. The existing `Saved2ServeValidator.validateDevotionLink` check is the
-URL validation baseline; links must also pass the review process below before
-they may be presented publicly.
+This document defines the MVP contract for curated devotion links. The
+repository supports storing explicitly approved records and retrieving
+published links from the existing DynamoDB table. This does not add a public
+API, leader review endpoint, public user submission, or automated publishing
+workflow. The existing `Saved2ServeValidator.validateDevotionLink` check is
+the URL validation baseline; links must also pass the review process below
+before they may be presented publicly.
 
 The MVP accepts links to publicly available YouTube content only, using HTTPS
 and the exact approved hosts already enforced by the validator:
@@ -65,12 +67,19 @@ only what is needed for review and ongoing verification.
    it `INACTIVE` while it is rechecked. A changed URL or material content
    change must be reviewed again before it is public.
 
-Only `APPROVED` records may be returned by a future public devotion endpoint.
-That response may include only `devotionId`, `title`, `url`, and `platform`.
-It must omit `sourceReference`, `reviewedBy`, `reviewNote`, and other internal
-review metadata. Admin review and status changes must require authenticated,
-authorized access. No personal viewer profile, viewing history, precise
-location, or user-submitted testimony is part of this feature.
+`DevotionLinkRepository.saveApproved` accepts only `APPROVED` records with
+verification metadata and a URL accepted by the HTTPS/YouTube allowlist.
+`findPublished` queries the shared status index for approved devotion-link
+items and maps every result page. Repository records include internal review
+metadata; repository calls do not perform authorization and their results must
+not be exposed directly from a public handler.
+
+A future public devotion endpoint may include only `devotionId`, `title`,
+`url`, and `platform`. It must omit `sourceReference`, `reviewedBy`,
+`reviewNote`, and other internal review metadata. Admin review and status
+changes must require authenticated, authorized access. No personal viewer
+profile, viewing history, precise location, or user-submitted testimony is
+part of this feature.
 
 ## Review evidence and acceptance scenarios
 
@@ -78,10 +87,11 @@ location, or user-submitted testimony is part of this feature.
 | --- | --- | --- |
 | An HTTPS link uses an approved YouTube host | URL validation accepts it; this alone does not approve publication. | Covered by `Saved2ServeValidatorTest.approvedHttpsDevotionLinksAreAccepted`. |
 | A link uses HTTP or a host outside the allowlist | URL validation rejects it. | Covered by `Saved2ServeValidatorTest.httpDevotionLinksAreRejected` and `Saved2ServeValidatorTest.unapprovedDevotionPlatformsAreRejected`. |
-| A candidate has not completed authorized review | It remains `PENDING_REVIEW` and is not public. | Contractual review scenario; persistence/API workflow is not implemented in this checkout. |
+| A candidate has not completed authorized review | It remains `PENDING_REVIEW` and cannot be saved through the published-link repository operation. | Covered by `DevotionLinkRepositoryTest.rejectsPendingOrInvalidLinksWithoutWriting`. |
 | Source or permission cannot be verified | The candidate is not approved or published. | Contractual review scenario. |
-| An authorized leader approves a verified candidate | Required provenance and review metadata are recorded internally; only the approved public fields may be returned. | Contractual review scenario. |
-| A reviewer rejects or inactivates a link | It is excluded from public results and review metadata remains private. | Contractual review scenario. |
+| An approved link is stored | Required provenance and review metadata are persisted internally. | Covered by `DevotionLinkRecordMapperTest` and `DevotionLinkRepositoryTest.savesOnlyApprovedDevotionLinks`. |
+| Published links are retrieved | The repository queries approved records of the devotion-link entity type, newest first. | Covered by `DevotionLinkRepositoryTest.retrievesApprovedLinksUsingStatusIndexAndEntityFilters`. |
+| A rejected or inactive link is retrieved | It is excluded by the approved status query. | Enforced by the repository status key and entity/status filters. |
 | An approved link changes destination or loses permission | It is removed from public results pending re-review. | Contractual review scenario. |
 
 The implemented URL-validation evidence can be run with:
@@ -90,7 +100,7 @@ The implemented URL-validation evidence can be run with:
 mvn -Dtest=Saved2ServeValidatorTest test
 ```
 
-The record lifecycle, storage, admin review endpoint, and public `GET
-/v1/devotions` behavior remain future implementation work; this document
+Candidate lifecycle management, the admin review endpoint, and public
+`GET /v1/devotions` behavior remain future implementation work; this document
 defines their acceptance contract without implying those runtime capabilities
 already exist.
