@@ -112,6 +112,7 @@ The platform must not infer or store precise home location data, and all locatio
 - Cognito authorization: require valid Cognito JWT verification on admin-only routes and reject expired or malformed tokens.
 - Data minimization: store only required fields and avoid data retention beyond the business need.
 - Public API boundary: keep user-submitted testimonies, help requests, and suggestions out of public APIs until reviewed and approved.
+- Engagement data: encrypt submitted name, optional phone, message, and email with KMS before storage; do not log or echo submission content.
 
 ## Operational notes
 
