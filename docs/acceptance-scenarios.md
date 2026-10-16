@@ -62,6 +62,16 @@ contract, source rules, and approval workflow are specified in
 safe response projection, approval filtering, and invalid-request behavior.
 Candidate lifecycle management and the admin API are not yet implemented.
 
+## Day 09 help-request and feedback scenarios
+
+- help-request and feedback messages are required, trimmed, and limited to 2,000 Unicode code points
+- engagement name, email, area code, and optional phone are capped at 100, 254, 16, and 32 Unicode code points respectively
+- exactly-at-limit values are accepted and over-limit values are rejected at request and domain boundaries
+- help requests, suggestions, and testimonies remain private pending-review engagements; no public submission or publishing route is added
+
+These cases are covered by `InterestEngagementRecordsTest` and specified in
+[day-09-help-request-and-feedback-types-with-input-limits.md](day-09-help-request-and-feedback-types-with-input-limits.md).
+
   Scenario: Leader filters the review queue to only unreviewed items
     Given a leader is authenticated with a valid Cognito JWT
     And the system contains both pending and reviewed submissions
