@@ -85,6 +85,20 @@ These cases are covered by `EngagementServiceTest`,
 data details are specified in
 [day-09-engagement-creation-and-persistence-flow.md](day-09-engagement-creation-and-persistence-flow.md).
 
+## Day 09 engagement validation, storage, and sanitized errors
+
+- missing or invalid consent, email, area code, type, or message is rejected with `400` and no repository write
+- every supported engagement type is accepted only into `PENDING_REVIEW`
+- malformed JSON, unsupported fields, and oversized payloads are rejected without exposing submitted values
+- persistence stores only encrypted email and encrypted name/phone/message content; no plaintext private content attributes are written
+- persistence failures return generic errors and fixed log messages without submitted content or provider exception details
+
+`EngagementApiHandlerTest` covers rejected input without persistence, the
+allowed type set, and response/log sanitization. `DynamoDbRecordMapperTest`
+checks encrypted content and encryption context; `DynamoDbSaved2ServeRepositoryTest`
+checks private storage attributes and pending-only writes. Run with
+`mvn "-DargLine=-Dnet.bytebuddy.experimental=true" "-Dtest=EngagementApiHandlerTest,DynamoDbRecordMapperTest,DynamoDbSaved2ServeRepositoryTest,EngagementServiceTest" test`.
+
   Scenario: Leader filters the review queue to only unreviewed items
     Given a leader is authenticated with a valid Cognito JWT
     And the system contains both pending and reviewed submissions
