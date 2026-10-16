@@ -29,6 +29,12 @@ public record EngagementRequest(
         phone = normalize(phone);
         message = normalize(message);
 
+        EngagementInputLimits.requireWithinLimit(name, EngagementInputLimits.NAME_MAX_LENGTH, "Name");
+        EngagementInputLimits.requireWithinLimit(email, EngagementInputLimits.EMAIL_MAX_LENGTH, "Email");
+        EngagementInputLimits.requireWithinLimit(areaCode, EngagementInputLimits.AREA_CODE_MAX_LENGTH, "Area code");
+        EngagementInputLimits.requireWithinLimit(phone, EngagementInputLimits.PHONE_MAX_LENGTH, "Phone");
+        EngagementInputLimits.requireWithinLimit(message, EngagementInputLimits.MESSAGE_MAX_LENGTH, "Message");
+
         if (name.isBlank()) {
             throw new IllegalArgumentException("Name is required.");
         }
