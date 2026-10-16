@@ -1,6 +1,7 @@
 package com.saved2serve.persistence.dynamodb;
 
 import com.saved2serve.domain.Engagement;
+import com.saved2serve.domain.EngagementType;
 import com.saved2serve.domain.ChurchDirectoryRecord;
 import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.Interest;
@@ -47,6 +48,71 @@ import static org.mockito.Mockito.when;
 class DynamoDbSaved2ServeRepositoryTest {
     private static final Instant CONSENTED_AT = Instant.parse("2026-10-24T10:15:30Z");
     private static final Instant CHURCH_VERIFIED_AT = Instant.parse("2026-10-25T10:00:00Z");
+
+    @Test
+    void savesNewEngagementAsPrivatePendingReviewItem() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
+                .ciphertextBlob(SdkBytes.fromUtf8String("encrypted-email"))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+        Engagement engagement = new Engagement(
+                "Alex Smith",
+                "alex@example.com",
+                "1800",
+                "5551234567",
+                true,
+                EngagementType.HELP_REQUEST,
+                "Please contact me.",
+                SubmissionStatus.PENDING_REVIEW
+        );
+
+        repository.save(engagement);
+
+        ArgumentCaptor<PutItemRequest> request = ArgumentCaptor.forClass(PutItemRequest.class);
+        verify(dynamoDbClient).putItem(request.capture());
+        Map<String, AttributeValue> item = request.getValue().item();
+        assertEquals("Saved2ServeRecords", request.getValue().tableName());
+        assertEquals("ENGAGEMENT", item.get("entityType").s());
+        assertEquals("PENDING_REVIEW", item.get("status").s());
+        assertEquals("STATUS#PENDING_REVIEW", item.get("GSI1PK").s());
+        assertEquals("AREA#1800", item.get("GSI2PK").s());
+        assertEquals("EMAIL_HASH#" + EmailHasher.sha256("alex@example.com"), item.get("GSI3PK").s());
+        assertTrue(item.containsKey("emailCiphertext"));
+        assertTrue(item.containsKey("privateContentCiphertext"));
+        assertFalse(item.containsKey("email"));
+        assertFalse(item.containsKey("name"));
+        assertFalse(item.containsKey("phone"));
+        assertFalse(item.containsKey("message"));
+        assertFalse(item.containsKey("fullAddress"));
+        assertFalse(item.containsKey("latitude"));
+        assertFalse(item.containsKey("longitude"));
+    }
+
+    @Test
+    void doesNotAllowSavingReviewedEngagementThroughSubmissionRepository() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, mock(KmsClient.class), "Saved2ServeRecords", "alias/test-email-key"
+        );
+        Engagement approved = new Engagement(
+                "Alex Smith",
+                "alex@example.com",
+                "1800",
+                "",
+                true,
+                EngagementType.HELP_REQUEST,
+                "Please contact me.",
+                SubmissionStatus.APPROVED
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> repository.save(approved));
+        verify(dynamoDbClient, never()).putItem(any(PutItemRequest.class));
+    }
+
     @Test
     void areaCodeLookupUsesAreaIndexAndMapsEveryPage() {
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
