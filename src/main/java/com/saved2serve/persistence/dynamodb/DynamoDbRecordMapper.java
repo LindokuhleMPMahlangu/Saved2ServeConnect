@@ -91,11 +91,12 @@ public final class DynamoDbRecordMapper {
         if (engagement.status() != SubmissionStatus.PENDING_REVIEW) {
             throw new IllegalArgumentException("Only pending-review engagements can be submitted.");
         }
+        byte[] privateContent = encodePrivateContent(engagement);
         String recordId = UUID.randomUUID().toString();
         String createdAt = CREATED_AT_FORMAT.format(Instant.now());
         Map<String, AttributeValue> item = baseItem(recordId, "ENGAGEMENT", createdAt, engagement.areaCode(), engagement.email());
         String status = engagement.status().name();
-        item.put("privateContentCiphertext", binary(encryptPrivateContent(engagement, recordId)));
+        item.put("privateContentCiphertext", binary(encryptPrivateContent(privateContent, recordId)));
         item.put("consent", bool(engagement.consent()));
         item.put("type", string(engagement.type().name()));
         item.put("status", string(status));
@@ -275,7 +276,7 @@ public final class DynamoDbRecordMapper {
                 .asString(StandardCharsets.UTF_8);
     }
 
-    private byte[] encryptPrivateContent(Engagement engagement, String recordId) {
+    private static byte[] encodePrivateContent(Engagement engagement) {
         byte[] plaintext;
         try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
              DataOutputStream output = new DataOutputStream(bytes)) {
@@ -290,6 +291,10 @@ public final class DynamoDbRecordMapper {
         if (plaintext.length > KMS_MAX_PLAINTEXT_BYTES) {
             throw new IllegalArgumentException("Engagement private content exceeds the AWS KMS plaintext limit.");
         }
+        return plaintext;
+    }
+
+    private byte[] encryptPrivateContent(byte[] plaintext, String recordId) {
         return kmsClient.encrypt(EncryptRequest.builder()
                         .keyId(kmsKeyId)
                         .plaintext(SdkBytes.fromByteArray(plaintext))
