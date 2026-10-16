@@ -3,6 +3,7 @@ package com.saved2serve.lambda;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import com.saved2serve.domain.Engagement;
+import com.saved2serve.domain.EngagementType;
 import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.service.EngagementService;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
@@ -78,18 +80,49 @@ class EngagementApiHandlerTest {
 
     @Test
     void rejectsMissingConsentMalformedJsonAndOversizedPayload() {
-        EngagementApiHandler handler = handler(mock(EngagementRepository.class));
-        String noConsent = BODY.replace("\"consent\":true", "\"consent\":false");
+        EngagementRepository repository = mock(EngagementRepository.class);
+        EngagementApiHandler handler = handler(repository);
+        List<String> invalidBodies = List.of(
+                BODY.replace("\"consent\":true", "\"consent\":false"),
+                BODY.replace("\"consent\":true", "\"consent\":\"yes\""),
+                BODY.replace("\"email\":\"alex@example.com\"", "\"email\":\"bad-email-secret\""),
+                BODY.replace("\"areaCode\":\"1800\"", "\"areaCode\":\"\""),
+                BODY.replace("\"message\":\"Please contact me about local support.\"", "\"message\":\"  \""),
+                BODY.replace("\"type\":\"HELP_REQUEST\"", "\"type\":null"),
+                "{invalid"
+        );
 
-        assertEquals(400, handler.handleRequest(event(noConsent, Map.of(
-                "content-type", "application/json"
-        )), null).getStatusCode());
-        assertEquals(400, handler.handleRequest(event("{invalid", Map.of(
-                "content-type", "application/json"
-        )), null).getStatusCode());
+        for (String invalidBody : invalidBodies) {
+            APIGatewayV2HTTPResponse response = handler.handleRequest(event(invalidBody, Map.of(
+                    "content-type", "application/json"
+            )), null);
+            assertEquals(400, response.getStatusCode());
+            assertFalse(response.getBody().contains("bad-email-secret"));
+            assertFalse(response.getBody().contains("alex@example.com"));
+            assertFalse(response.getBody().contains("Please contact me"));
+        }
         assertEquals(413, handler.handleRequest(event("x".repeat(16 * 1024 + 1), Map.of(
                 "content-type", "application/json"
         )), null).getStatusCode());
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void acceptsEveryAllowedEngagementTypeAsPrivatePendingReview() {
+        EngagementRepository repository = mock(EngagementRepository.class);
+        EngagementApiHandler handler = handler(repository);
+
+        Stream.of(EngagementType.values()).forEach(type -> {
+            String body = BODY.replace("\"type\":\"HELP_REQUEST\"", "\"type\":\"" + type.name() + "\"");
+            assertEquals(201, handler.handleRequest(event(body, Map.of(
+                    "content-type", "application/json"
+            )), null).getStatusCode());
+        });
+
+        ArgumentCaptor<Engagement> saved = ArgumentCaptor.forClass(Engagement.class);
+        verify(repository, org.mockito.Mockito.times(EngagementType.values().length)).save(saved.capture());
+        assertTrue(saved.getAllValues().stream().allMatch(engagement ->
+                engagement.status() == com.saved2serve.domain.SubmissionStatus.PENDING_REVIEW));
     }
 
     @Test
