@@ -72,6 +72,19 @@ Candidate lifecycle management and the admin API are not yet implemented.
 These cases are covered by `InterestEngagementRecordsTest` and specified in
 [day-09-help-request-and-feedback-types-with-input-limits.md](day-09-help-request-and-feedback-types-with-input-limits.md).
 
+## Day 09 engagement creation and persistence scenarios
+
+- `POST /v1/engagements` accepts only an allowlisted JSON request with valid required fields, an allowed engagement type, and explicit consent
+- accepted requests are stored as `PENDING_REVIEW`; a caller cannot set review status or submit full addresses or precise coordinates
+- email is encrypted at rest and omitted from persistence as plaintext and from responses; public responses do not echo submitted content
+- oversized, malformed, unsupported, or non-consented requests are rejected without persistence
+- persistence errors return a generic response and do not reveal internal exception details
+
+These cases are covered by `EngagementServiceTest`,
+`EngagementApiHandlerTest`, and `DynamoDbSaved2ServeRepositoryTest`; route and
+data details are specified in
+[day-09-engagement-creation-and-persistence-flow.md](day-09-engagement-creation-and-persistence-flow.md).
+
   Scenario: Leader filters the review queue to only unreviewed items
     Given a leader is authenticated with a valid Cognito JWT
     And the system contains both pending and reviewed submissions
