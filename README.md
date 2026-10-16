@@ -67,6 +67,10 @@ The approved church directory and service-area contract is documented in [docs/d
 
 The devotion-link field contract, approved source rules, leader review workflow, public-data boundary, and review scenarios are documented in [docs/day-08-devotion-link-fields-source-and-approval.md](docs/day-08-devotion-link-fields-source-and-approval.md). `DevotionLinkRepository` stores only approved records with required provenance and verification metadata, and retrieves published links through the shared DynamoDB status index. `GET /v1/devotions`, implemented by `DevotionApiHandler`, returns only the public devotion ID, title, validated URL, and platform for approved links. URL validation accepts only HTTPS links on the exact YouTube hosts in the allowlist. Focused tests cover validation, repository behavior, and safe endpoint responses. Candidate review management and the admin devotion API remain unimplemented; repository results include internal review metadata and must not be returned directly from public handlers.
 
+## Day 09 deliverable included
+
+`HelpRequest` and `Feedback` define required, trimmed message values with a 2,000-Unicode-code-point limit. The existing `EngagementRequest` and `Engagement` apply bounded limits to name, email, area code, phone, and message fields at request and domain boundaries. Help requests, suggestions, and testimonies remain private pending-review engagements; no new API route or public exposure is added. See [docs/day-09-help-request-and-feedback-types-with-input-limits.md](docs/day-09-help-request-and-feedback-types-with-input-limits.md) and `InterestEngagementRecordsTest` for the input contract and test evidence.
+
 ## Java and dependency baseline
 
 - Java 21
