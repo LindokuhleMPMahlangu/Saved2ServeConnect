@@ -17,6 +17,11 @@ import software.amazon.awssdk.services.kms.model.DecryptRequest;
 import software.amazon.awssdk.services.kms.model.EncryptRequest;
 
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -83,15 +88,16 @@ public final class DynamoDbRecordMapper {
 
     public Map<String, AttributeValue> toItem(Engagement engagement) {
         Objects.requireNonNull(engagement, "engagement must not be null");
+        if (engagement.status() != SubmissionStatus.PENDING_REVIEW) {
+            throw new IllegalArgumentException("Only pending-review engagements can be submitted.");
+        }
         String recordId = UUID.randomUUID().toString();
         String createdAt = CREATED_AT_FORMAT.format(Instant.now());
         Map<String, AttributeValue> item = baseItem(recordId, "ENGAGEMENT", createdAt, engagement.areaCode(), engagement.email());
         String status = engagement.status().name();
-        item.put("name", string(engagement.name()));
-        item.put("phone", string(engagement.phone()));
+        item.put("privateContentCiphertext", binary(encryptPrivateContent(engagement, recordId)));
         item.put("consent", bool(engagement.consent()));
         item.put("type", string(engagement.type().name()));
-        item.put("message", string(engagement.message()));
         item.put("status", string(status));
         item.put(GSI1PK, string("STATUS#" + status));
         item.put(GSI1SK, string(createdAtKey(createdAt, recordId)));
@@ -168,14 +174,15 @@ public final class DynamoDbRecordMapper {
 
     public Engagement toEngagement(Map<String, AttributeValue> item) {
         String recordId = requiredString(item, "recordId");
+        EngagementPrivateContent privateContent = decryptPrivateContent(item, recordId);
         return new Engagement(
-                requiredString(item, "name"),
+                privateContent.name(),
                 decryptEmail(item, recordId, "ENGAGEMENT"),
                 requiredString(item, "areaCode"),
-                requiredString(item, "phone"),
+                privateContent.phone(),
                 requiredBoolean(item, "consent"),
                 EngagementType.valueOf(requiredString(item, "type")),
-                requiredString(item, "message"),
+                privateContent.message(),
                 SubmissionStatus.valueOf(requiredString(item, "status"))
         );
     }
@@ -268,6 +275,68 @@ public final class DynamoDbRecordMapper {
                 .asString(StandardCharsets.UTF_8);
     }
 
+    private byte[] encryptPrivateContent(Engagement engagement, String recordId) {
+        byte[] plaintext;
+        try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+             DataOutputStream output = new DataOutputStream(bytes)) {
+            output.writeUTF(engagement.name());
+            output.writeUTF(engagement.phone());
+            output.writeUTF(engagement.message());
+            output.flush();
+            plaintext = bytes.toByteArray();
+        } catch (IOException failure) {
+            throw new IllegalStateException("Engagement private content could not be encoded.", failure);
+        }
+        if (plaintext.length > KMS_MAX_PLAINTEXT_BYTES) {
+            throw new IllegalArgumentException("Engagement private content exceeds the AWS KMS plaintext limit.");
+        }
+        return kmsClient.encrypt(EncryptRequest.builder()
+                        .keyId(kmsKeyId)
+                        .plaintext(SdkBytes.fromByteArray(plaintext))
+                        .encryptionContext(privateContentEncryptionContext(recordId))
+                        .build())
+                .ciphertextBlob()
+                .asByteArray();
+    }
+
+    private EngagementPrivateContent decryptPrivateContent(Map<String, AttributeValue> item, String recordId) {
+        AttributeValue ciphertext = item.get("privateContentCiphertext");
+        if (ciphertext == null || ciphertext.b() == null || ciphertext.b().asByteArray().length == 0) {
+            return new EngagementPrivateContent(
+                    requiredString(item, "name"),
+                    requiredString(item, "phone"),
+                    requiredString(item, "message")
+            );
+        }
+        byte[] plaintext = kmsClient.decrypt(DecryptRequest.builder()
+                        .ciphertextBlob(SdkBytes.fromByteArray(ciphertext.b().asByteArray()))
+                        .encryptionContext(privateContentEncryptionContext(recordId))
+                        .build())
+                .plaintext()
+                .asByteArray();
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(plaintext))) {
+            EngagementPrivateContent privateContent = new EngagementPrivateContent(
+                    input.readUTF(),
+                    input.readUTF(),
+                    input.readUTF()
+            );
+            if (input.available() != 0) {
+                throw new IllegalStateException("Engagement private content has an invalid format.");
+            }
+            return privateContent;
+        } catch (IOException failure) {
+            throw new IllegalStateException("Engagement private content could not be decoded.", failure);
+        }
+    }
+
+    private static Map<String, String> privateContentEncryptionContext(String recordId) {
+        return Map.of(
+                "recordId", recordId,
+                "entityType", "ENGAGEMENT",
+                "attribute", "privateContent"
+        );
+    }
+
     private static Map<String, String> encryptionContext(String recordId, String entityType) {
         return Map.of("recordId", recordId, "entityType", entityType);
     }
@@ -326,5 +395,8 @@ public final class DynamoDbRecordMapper {
         if (!result.valid()) {
             throw new IllegalArgumentException("Devotion link URL is not approved.");
         }
+    }
+
+    private record EngagementPrivateContent(String name, String phone, String message) {
     }
 }
