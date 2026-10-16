@@ -133,6 +133,25 @@ class DynamoDbRecordMapperTest {
     }
 
     @Test
+    void rejectsPrivateContentAboveKmsPlaintextLimitBeforeEncrypting() {
+        KmsClient kmsClient = mockKmsClient();
+        DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
+        Engagement engagement = new Engagement(
+                "A Person",
+                EMAIL,
+                "10001",
+                "",
+                true,
+                EngagementType.HELP_REQUEST,
+                "\uD83D\uDE4F".repeat(1500),
+                SubmissionStatus.PENDING_REVIEW
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> mapper.toItem(engagement));
+        verify(kmsClient, never()).encrypt(any(EncryptRequest.class));
+    }
+
+    @Test
     void mapsChurchDirectoryRecordWithInternalVerificationMetadata() {
         KmsClient kmsClient = mockKmsClient();
         DynamoDbRecordMapper mapper = new DynamoDbRecordMapper(kmsClient, "alias/test-email-key");
