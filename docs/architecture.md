@@ -57,7 +57,7 @@ The public and private routes are intentionally small and explicit:
 - POST /v1/interests: create a visitor interest or registration record, limited to consented, voluntary submission.
 - GET /v1/churches: return approved churches for an exact active area-code match only; do not infer nearby or broader matches.
 - GET /v1/devotions: return approved devotion links only when they meet the allowed scheme and platform rules. The public response includes only `devotionId`, `title`, `url`, and `platform`; source and review metadata remain internal.
-- POST /v1/engagements: create leader help requests, suggestions, or testimony submissions in a review state.
+- POST /v1/engagements: accept consented help requests, suggestions, or testimony submissions as private pending-review records; do not publish them.
 - GET /v1/admin/engagements: list submissions requiring admin review.
 - PATCH /v1/admin/engagements/{id}: update submission status such as PENDING_REVIEW, approved, or rejected.
 
