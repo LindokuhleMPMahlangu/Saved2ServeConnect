@@ -59,6 +59,10 @@ public final class DynamoDbSaved2ServeRepository
 
     @Override
     public void save(Engagement engagement) {
+        Objects.requireNonNull(engagement, "engagement must not be null");
+        if (engagement.status() != SubmissionStatus.PENDING_REVIEW) {
+            throw new IllegalArgumentException("New engagement submissions must be pending review.");
+        }
         dynamoDbClient.putItem(PutItemRequest.builder()
                 .tableName(tableName)
                 .item(mapper.toItem(engagement))
