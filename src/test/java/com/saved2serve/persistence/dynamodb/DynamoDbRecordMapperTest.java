@@ -18,6 +18,9 @@ import software.amazon.awssdk.services.kms.model.EncryptRequest;
 import software.amazon.awssdk.services.kms.model.EncryptResponse;
 
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
 
@@ -112,9 +115,21 @@ class DynamoDbRecordMapperTest {
         Engagement restored = mapper.toEngagement(item);
 
         assertFalse(item.containsKey("email"));
+        assertFalse(item.containsKey("name"));
+        assertFalse(item.containsKey("phone"));
+        assertFalse(item.containsKey("message"));
+        assertTrue(item.containsKey("privateContentCiphertext"));
         assertEquals("STATUS#PENDING_REVIEW", item.get("GSI1PK").s());
         assertTrue(item.get("GSI1SK").s().startsWith("CREATED_AT#"));
         assertEquals(engagement, restored);
+
+        ArgumentCaptor<EncryptRequest> encryptRequests = ArgumentCaptor.forClass(EncryptRequest.class);
+        verify(kmsClient, org.mockito.Mockito.times(2)).encrypt(encryptRequests.capture());
+        assertEquals(Map.of(
+                "recordId", item.get("recordId").s(),
+                "entityType", "ENGAGEMENT",
+                "attribute", "privateContent"
+        ), encryptRequests.getAllValues().get(1).encryptionContext());
     }
 
     @Test
@@ -194,10 +209,27 @@ class DynamoDbRecordMapperTest {
         when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
                 .ciphertextBlob(SdkBytes.fromByteArray(ENCRYPTED_EMAIL))
                 .build());
-        when(kmsClient.decrypt(any(DecryptRequest.class))).thenReturn(DecryptResponse.builder()
-                .plaintext(SdkBytes.fromString(EMAIL, StandardCharsets.UTF_8))
-                .build());
+        when(kmsClient.decrypt(any(DecryptRequest.class))).thenAnswer(invocation -> {
+            DecryptRequest request = invocation.getArgument(0);
+            byte[] plaintext = request.encryptionContext().containsKey("attribute")
+                    ? privateContentPlaintext()
+                    : EMAIL.getBytes(StandardCharsets.UTF_8);
+            return DecryptResponse.builder()
+                    .plaintext(SdkBytes.fromByteArray(plaintext))
+                    .build();
+        });
         return kmsClient;
+    }
+
+    private static byte[] privateContentPlaintext() throws IOException {
+        try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+             DataOutputStream output = new DataOutputStream(bytes)) {
+            output.writeUTF("A Person");
+            output.writeUTF("");
+            output.writeUTF("Please contact me.");
+            output.flush();
+            return bytes.toByteArray();
+        }
     }
 
     private static AttributeValue string(String value) {
