@@ -19,6 +19,8 @@ import software.amazon.awssdk.services.kms.model.EncryptResponse;
 
 import java.nio.charset.StandardCharsets;
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.time.Instant;
@@ -130,6 +132,15 @@ class DynamoDbRecordMapperTest {
                 "entityType", "ENGAGEMENT",
                 "attribute", "privateContent"
         ), encryptRequests.getAllValues().get(1).encryptionContext());
+        try (DataInputStream encryptedContent = new DataInputStream(new ByteArrayInputStream(
+                encryptRequests.getAllValues().get(1).plaintext().asByteArray()
+        ))) {
+            assertEquals("A Person", encryptedContent.readUTF());
+            assertEquals("", encryptedContent.readUTF());
+            assertEquals("Please contact me.", encryptedContent.readUTF());
+        } catch (IOException failure) {
+            throw new AssertionError("Private engagement content should be encoded before encryption.", failure);
+        }
     }
 
     @Test
