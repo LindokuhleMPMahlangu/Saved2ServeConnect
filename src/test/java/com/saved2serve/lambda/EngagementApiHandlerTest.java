@@ -10,8 +10,13 @@ import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.services.dynamodb.model.DynamoDbException;
 
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -107,6 +112,22 @@ class EngagementApiHandlerTest {
     @Test
     void returnsGenericUnavailableResponseForPersistenceFailure() {
         EngagementRepository repository = mock(EngagementRepository.class);
+        List<String> logMessages = new ArrayList<>();
+        Logger logger = Logger.getLogger(EngagementApiHandler.class.getName());
+        Handler logCapture = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                logMessages.add(record.getMessage());
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
         doThrow(DynamoDbException.builder()
                 .message("failure for alex@example.com")
                 .awsErrorDetails(AwsErrorDetails.builder()
@@ -115,13 +136,20 @@ class EngagementApiHandlerTest {
                 .build())
                 .when(repository).save(any());
 
-        APIGatewayV2HTTPResponse response = handler(repository).handleRequest(
-                event(BODY, Map.of("content-type", "application/json")), null
-        );
+        logger.addHandler(logCapture);
+        try {
+            APIGatewayV2HTTPResponse response = handler(repository).handleRequest(
+                    event(BODY, Map.of("content-type", "application/json")), null
+            );
 
-        assertEquals(503, response.getStatusCode());
-        assertFalse(response.getBody().contains("alex@example.com"));
-        assertFalse(response.getBody().contains("InternalServerError"));
+            assertEquals(503, response.getStatusCode());
+            assertFalse(response.getBody().contains("alex@example.com"));
+            assertFalse(response.getBody().contains("InternalServerError"));
+            assertTrue(logMessages.stream().noneMatch(message ->
+                    message.contains("alex@example.com") || message.contains("Please contact me")));
+        } finally {
+            logger.removeHandler(logCapture);
+        }
     }
 
     private static EngagementApiHandler handler(EngagementRepository repository) {
