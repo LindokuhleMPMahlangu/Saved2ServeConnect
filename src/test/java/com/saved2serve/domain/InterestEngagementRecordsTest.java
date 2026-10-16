@@ -113,6 +113,72 @@ class InterestEngagementRecordsTest {
         assertEquals("I need prayer support for a new volunteer team.", request.message());
     }
 
+    @Test
+    void helpRequestAndFeedbackNormalizeAndEnforceMessageLimit() {
+        String withinLimit = "x".repeat(2000);
+        assertEquals(withinLimit, new HelpRequest(" " + withinLimit + " ").message());
+        assertEquals(withinLimit, new Feedback(withinLimit).message());
+
+        assertThrows(IllegalArgumentException.class, () -> new HelpRequest("x".repeat(2001)));
+        assertThrows(IllegalArgumentException.class, () -> new Feedback("x".repeat(2001)));
+        assertThrows(IllegalArgumentException.class, () -> new HelpRequest("  "));
+        assertThrows(IllegalArgumentException.class, () -> new Feedback(null));
+    }
+
+    @Test
+    void engagementRequestRejectsOversizedInputsAndAcceptsUnicodeByCodePoint() {
+        assertThrows(IllegalArgumentException.class, () -> new EngagementRequest(
+                "Alex", "alex@example.com", "x".repeat(17), "", true,
+                EngagementType.HELP_REQUEST, "Please contact me."
+        ));
+        assertThrows(IllegalArgumentException.class, () -> new EngagementRequest(
+                "Alex", "alex@example.com", "10001", "x".repeat(33), true,
+                EngagementType.HELP_REQUEST, "Please contact me."
+        ));
+        assertThrows(IllegalArgumentException.class, () -> new EngagementRequest(
+                "x".repeat(101), "alex@example.com", "10001", "", true,
+                EngagementType.HELP_REQUEST, "Please contact me."
+        ));
+        assertThrows(IllegalArgumentException.class, () -> new EngagementRequest(
+                "Alex", "x".repeat(255), "10001", "", true,
+                EngagementType.HELP_REQUEST, "Please contact me."
+        ));
+        assertThrows(IllegalArgumentException.class, () -> new EngagementRequest(
+                "Alex", "alex@example.com", "10001", "", true,
+                EngagementType.HELP_REQUEST, "x".repeat(2001)
+        ));
+
+        EngagementRequest atFieldLimits = new EngagementRequest(
+                "n".repeat(100), "e".repeat(254), "a".repeat(16), "p".repeat(32), true,
+                EngagementType.HELP_REQUEST, "m"
+        );
+        assertEquals(100, atFieldLimits.name().codePointCount(0, atFieldLimits.name().length()));
+        assertEquals(254, atFieldLimits.email().codePointCount(0, atFieldLimits.email().length()));
+        assertEquals(16, atFieldLimits.areaCode().codePointCount(0, atFieldLimits.areaCode().length()));
+        assertEquals(32, atFieldLimits.phone().codePointCount(0, atFieldLimits.phone().length()));
+
+        String supplementaryCharacter = "\uD83D\uDE4F";
+        EngagementRequest request = new EngagementRequest(
+                "Alex", "alex@example.com", "10001", "", true,
+                EngagementType.HELP_REQUEST, supplementaryCharacter.repeat(2000)
+        );
+        assertEquals(2000, request.message().codePointCount(0, request.message().length()));
+    }
+
+    @Test
+    void engagementRecordRejectsMessagesAboveLimit() {
+        assertThrows(IllegalArgumentException.class, () -> new Engagement(
+                "Jordan Lee",
+                "jordan@example.com",
+                "20001",
+                "",
+                true,
+                EngagementType.SUGGESTION,
+                "x".repeat(2001),
+                SubmissionStatus.PENDING_REVIEW
+        ));
+    }
+
     private static boolean containsField(Class<?> type, String fieldName) {
         for (Field field : type.getDeclaredFields()) {
             if (field.getName().equals(fieldName)) {
