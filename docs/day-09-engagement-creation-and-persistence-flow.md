@@ -34,12 +34,16 @@ The body is limited to 16 KiB, including base64-encoded API Gateway payloads.
 ## Creation and persistence
 
 The service validates the request and creates an `Engagement` with
-`PENDING_REVIEW` status. Repository writes reject records in any other status,
-so the submission path cannot publish reviewed content. The DynamoDB mapper
-stores the engagement entity type, message, consent, area code, engagement
-type, and pending-review status/index keys. Email is encrypted with the
-configured KMS key and encryption context; only its hash is used for the
-email lookup index. Raw email is not stored as a plaintext attribute.
+`PENDING_REVIEW` status. Repository and mapper writes reject records in any
+other status, so the submission path cannot publish reviewed content. The
+DynamoDB mapper stores the engagement entity type, consent, area code,
+engagement type, and pending-review status/index keys. Email is encrypted with
+the configured KMS key and encryption context; only its hash is used for the
+email lookup index. Name, phone, and message are encoded together and encrypted
+with the same KMS key using an engagement-specific encryption context. These
+fields are not stored as plaintext DynamoDB attributes. Existing records with
+plaintext name, phone, and message attributes remain readable for compatibility;
+new submissions use the encrypted attribute.
 
 The Lambda requires `SAVED2SERVE_TABLE_NAME` and `SAVED2SERVE_KMS_KEY_ID`.
 Configure API Gateway throttling and TLS at the edge. The handler does not log
@@ -63,6 +67,12 @@ review queue or public submission data; leader-only review routes remain a
 separate authenticated workflow. No submission is auto-approved or
 auto-published.
 
+The database mapper enforces the same `PENDING_REVIEW` boundary as the
+repository. A future moderation workflow must require authenticated,
+authorized leader access; it must not publish content automatically. No
+retention duration or TTL is configured here; define and approve a retention
+period before adding automatic deletion.
+
 ## Review evidence
 
 `EngagementServiceTest` verifies pending-review creation, validation before
@@ -70,7 +80,7 @@ persistence, and generic persistence errors. `EngagementApiHandlerTest` covers
 accepted requests, base64 payloads, invalid and disallowed input, request
 limits, route handling, non-disclosing responses, and persistence failures.
 `DynamoDbSaved2ServeRepositoryTest` verifies pending-only writes and
-encrypted-email/index attributes.
+encrypted-email, encrypted-content, and index attributes.
 
 Run the focused tests with:
 
