@@ -69,7 +69,9 @@ The devotion-link field contract, approved source rules, leader review workflow,
 
 ## Day 09 deliverable included
 
-`HelpRequest` and `Feedback` define required, trimmed message values with a 2,000-Unicode-code-point limit. The existing `EngagementRequest` and `Engagement` apply bounded limits to name, email, area code, phone, and message fields at request and domain boundaries. Help requests, suggestions, and testimonies remain private pending-review engagements; no new API route or public exposure is added. See [docs/day-09-help-request-and-feedback-types-with-input-limits.md](docs/day-09-help-request-and-feedback-types-with-input-limits.md) and `InterestEngagementRecordsTest` for the input contract and test evidence.
+`HelpRequest` and `Feedback` define required, trimmed message values with a 2,000-Unicode-code-point limit. The existing `EngagementRequest` and `Engagement` apply bounded limits to name, email, area code, phone, and message fields at request and domain boundaries. Help requests, suggestions, and testimonies remain private pending-review engagements. See [docs/day-09-help-request-and-feedback-types-with-input-limits.md](docs/day-09-help-request-and-feedback-types-with-input-limits.md) and `InterestEngagementRecordsTest` for the input contract and test evidence.
+
+`POST /v1/engagements` now validates consented help requests, suggestions, and testimonies, then persists them as `PENDING_REVIEW`. The handler enforces a JSON field allowlist and 16 KiB payload limit, returns generic non-disclosing responses, and never echoes submitted content. The DynamoDB repository refuses non-pending submissions; email is encrypted with KMS and indexed only by hash. See [docs/day-09-engagement-creation-and-persistence-flow.md](docs/day-09-engagement-creation-and-persistence-flow.md) for the request contract and validation evidence. Review and public publishing routes remain outside this flow.
 
 ## Java and dependency baseline
 
