@@ -24,7 +24,7 @@ class DevotionApiHandlerTest {
     private static final Instant VERIFIED_AT = Instant.parse("2026-10-25T10:00:00Z");
 
     @Test
-    void returnsOnlySafeFieldsForPublishedLinks() throws Exception {
+    void returnsOnlySafePublishedLinkFieldsWithoutBearerToken() throws Exception {
         DevotionLinkRepository repository = new DevotionLinkRepository() {
             @Override
             public void saveApproved(DevotionLink devotionLink) {
@@ -66,7 +66,7 @@ class DevotionApiHandlerTest {
     }
 
     @Test
-    void returnsEmptyListWhenNoApprovedLinksExist() throws Exception {
+    void returnsEmptyPublicListWithoutBearerTokenWhenNoApprovedLinksExist() throws Exception {
         DevotionLinkRepository repository = new DevotionLinkRepository() {
             @Override
             public void saveApproved(DevotionLink devotionLink) {
