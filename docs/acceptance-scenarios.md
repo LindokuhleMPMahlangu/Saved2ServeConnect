@@ -8,7 +8,8 @@ This file is a shorthand reference for the MVP acceptance scenarios. The complet
 - rejection of full residential addresses and GPS coordinates
 - pending-review handling for help requests, suggestions, and testimonies
 - approved devotion links only over HTTPS
-- leader-only access through Cognito JWT authentication
+- leader-only access through a Cognito JWT authorizer, route scopes, and a verified `Leaders` group claim
+- public interest, engagement, church, and devotion routes remain accessible without a token
 - review queue filtering and pagination for pending submissions
 - approved church results for an exact active area-code match, with an empty result when no approved church is listed
 
@@ -18,6 +19,8 @@ This file is a shorthand reference for the MVP acceptance scenarios. The complet
 - no auto-publication of submissions
 - no leakage of personal data in validation errors
 - admin routes require authentication and authorization
+- a valid JWT without the required route scope or exact `Leaders` membership is denied at the handler boundary before leader-only data is read or changed
+- public handlers do not require or trust caller-supplied identity claims
 
 See the README for the full implementation summary and supporting project details.
 
