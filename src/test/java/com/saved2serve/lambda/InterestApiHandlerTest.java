@@ -38,7 +38,7 @@ class InterestApiHandlerTest {
     );
 
     @Test
-    void acceptsValidJsonAndDoesNotReturnPersonalInformation() {
+    void acceptsUnauthenticatedPublicRequestWithoutReturningPersonalInformation() {
         InterestRepository repository = mock(InterestRepository.class);
         when(repository.findRegistrationFingerprintByIdempotencyKey(Hashing.sha256("request-123")))
                 .thenReturn(null);
