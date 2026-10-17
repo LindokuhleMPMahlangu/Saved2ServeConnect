@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 class ChurchDirectoryApiHandlerTest {
     @Test
-    void returnsOnlyPublicChurchFieldsForAreaCodeLookup() {
+    void returnsOnlyPublicChurchFieldsWithoutBearerTokenForAreaCodeLookup() {
         ChurchDirectoryApiHandler handler = handlerFor(areaCode -> List.of(record(
                 "church-1", "00123", "Example Church", "https://example.org", "14 Example Road"
         )));
