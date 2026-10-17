@@ -64,8 +64,9 @@ The public and private routes are intentionally small and explicit:
 The admin routes are planned and are not implemented in the current MVP code.
 When deployed, protect them with the Cognito HTTP API JWT authorizer and
 route-specific custom scopes, then check the verified `cognito:groups` claim
-for the `Leaders` group in each integrated Lambda. A JWT authorizer alone does
-not enforce Cognito group membership. See
+for the `Leaders` group in each integrated Lambda using the shared
+`LeaderAuthorization` guard before any repository access or side effect. A JWT
+authorizer alone does not enforce Cognito group membership. See
 [Day 10 - Cognito JWT authorizer for leader-only routes](day-10-cognito-jwt-authorizer.md)
 for the exact configuration and verification matrix.
 
