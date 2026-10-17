@@ -61,6 +61,14 @@ The public and private routes are intentionally small and explicit:
 - GET /v1/admin/engagements: list submissions requiring admin review.
 - PATCH /v1/admin/engagements/{id}: update submission status such as PENDING_REVIEW, approved, or rejected.
 
+The admin routes are planned and are not implemented in the current MVP code.
+When deployed, protect them with the Cognito HTTP API JWT authorizer and
+route-specific custom scopes, then check the verified `cognito:groups` claim
+for the `Leaders` group in each integrated Lambda. A JWT authorizer alone does
+not enforce Cognito group membership. See
+[Day 10 - Cognito JWT authorizer for leader-only routes](day-10-cognito-jwt-authorizer.md)
+for the exact configuration and verification matrix.
+
 ### JSON contract expectations
 
 Public JSON payloads are intentionally lean. Inputs should be validated for required fields and constrained to approved data types. Admin endpoints must require a valid Cognito JWT and should not expose sensitive or unpublished records to anonymous callers.
