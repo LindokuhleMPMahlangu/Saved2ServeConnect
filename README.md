@@ -73,6 +73,10 @@ The devotion-link field contract, approved source rules, leader review workflow,
 
 `POST /v1/engagements` validates consented help requests, suggestions, and testimonies, then persists them as `PENDING_REVIEW`. The handler enforces a JSON field allowlist and 16 KiB payload limit, returns generic non-disclosing responses, and never echoes submitted content. The DynamoDB repository and mapper refuse non-pending submissions; KMS encrypts email, name, optional phone, and message before storage, with email indexed only by hash. See [docs/day-09-engagement-creation-and-persistence-flow.md](docs/day-09-engagement-creation-and-persistence-flow.md) for the request contract and validation evidence. Review and public publishing routes remain outside this flow.
 
+## Day 10 deliverable included
+
+[docs/day-10-cognito-jwt-authorizer.md](docs/day-10-cognito-jwt-authorizer.md) specifies the Cognito HTTP API JWT authorizer, least-privilege scopes for planned leader routes, the required verified `Leaders` group check in each integration Lambda, and a deployment verification matrix. Admin review routes and AWS infrastructure are not yet implemented or deployed; the guide does not claim live authorization has been configured.
+
 ## Java and dependency baseline
 
 - Java 21
