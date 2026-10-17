@@ -38,7 +38,7 @@ class EngagementApiHandlerTest {
             """;
 
     @Test
-    void acceptsSubmissionPersistsPendingAndDoesNotEchoPersonalData() {
+    void acceptsUnauthenticatedPublicSubmissionAndDoesNotEchoPersonalData() {
         EngagementRepository repository = mock(EngagementRepository.class);
         EngagementApiHandler handler = handler(repository);
 
