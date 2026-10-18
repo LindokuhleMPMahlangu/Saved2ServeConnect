@@ -75,7 +75,11 @@ The devotion-link field contract, approved source rules, leader review workflow,
 
 ## Day 10 deliverables included
 
-[docs/day-10-cognito-jwt-authorizer.md](docs/day-10-cognito-jwt-authorizer.md) specifies the Cognito HTTP API JWT authorizer, least-privilege scopes for planned leader routes, the required verified `Leaders` group check in each integration Lambda, and a deployment verification matrix. The shared `LeaderAuthorization` guard checks the API Gateway JWT context for the exact route scope and leader-group claim, failing closed when either is missing; its tests cover authorized leaders, insufficient scopes, missing context, non-leaders, and malformed claims. Public-handler tests verify that interest, engagement, church directory, and devotion routes succeed without an authorization token while preserving privacy controls. Admin review routes and AWS infrastructure are not yet implemented or deployed; the guide does not claim live authorization has been configured.
+[docs/day-10-cognito-jwt-authorizer.md](docs/day-10-cognito-jwt-authorizer.md) specifies the Cognito HTTP API JWT authorizer, least-privilege scopes for leader routes, the required verified `Leaders` group check in each integration Lambda, and a deployment verification matrix. The shared `LeaderAuthorization` guard checks the API Gateway JWT context for the exact route scope and leader-group claim, failing closed when either is missing; its tests cover authorized leaders, insufficient scopes, missing context, non-leaders, and malformed claims. Public-handler tests verify that interest, engagement, church directory, and devotion routes succeed without an authorization token while preserving privacy controls. The guide defines deployment configuration; no live AWS authorizer is configured by this repository.
+
+## Day 11 deliverables included
+
+Leader engagement review is implemented in `LeaderEngagementApiHandler`: `GET /v1/admin/engagements` supports status, inclusive lower/exclusive upper time bounds, and bounded opaque-cursor pagination; `PATCH /v1/admin/engagements/{engagementId}` allows only `PENDING_REVIEW` to `APPROVED` or `REJECTED`. Both routes require their Day 10 scope and the `Leaders` group. DynamoDB conditionally updates the engagement and writes a minimal reviewer/status/timestamp audit record atomically. Reviewed submissions remain private and are not published by this flow. See [docs/day-11-leader-engagement-review.md](docs/day-11-leader-engagement-review.md) for route contracts, privacy boundaries, and test evidence; it does not claim deployment to AWS.
 
 ## Java and dependency baseline
 
@@ -137,7 +141,7 @@ The acceptance scenarios cover the core MVP flows and expected behavior:
 - approved devotion links only over HTTPS
 - private help, testimony, and suggestion submissions stored as pending review
 - leader access through Cognito JWT authentication and protected admin routes
-- review queue filtering and pagination for pending submissions
+- leader review queue filtering by status and time, cursor pagination, and safe status transitions
 
 ## Validation rules enforced in code
 
@@ -163,5 +167,7 @@ Additional supporting materials are available in the docs folder:
 - day-06-api-gateway-interest-endpoint.md
 - day-07-approved-church-directory-and-service-areas.md
 - day-07-seeding-church-candidates.md
+- day-10-cognito-jwt-authorizer.md
+- day-11-leader-engagement-review.md
 
 The architecture document is intentionally kept separate from this README.
