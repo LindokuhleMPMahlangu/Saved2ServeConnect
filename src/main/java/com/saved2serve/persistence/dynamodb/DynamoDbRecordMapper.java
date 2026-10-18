@@ -8,6 +8,7 @@ import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
+import com.saved2serve.repository.EngagementQueueEntry;
 import com.saved2serve.util.EmailHasher;
 import com.saved2serve.validation.Saved2ServeValidator;
 import software.amazon.awssdk.core.SdkBytes;
@@ -188,6 +189,14 @@ public final class DynamoDbRecordMapper {
         );
     }
 
+    public EngagementQueueEntry toEngagementQueueEntry(Map<String, AttributeValue> item) {
+        return new EngagementQueueEntry(
+                requiredString(item, "recordId"),
+                Instant.parse(requiredString(item, "createdAt")),
+                toEngagement(item)
+        );
+    }
+
     public ChurchDirectoryRecord toChurchDirectoryRecord(Map<String, AttributeValue> item) {
         return new ChurchDirectoryRecord(
                 requiredString(item, "churchId"),
@@ -348,6 +357,10 @@ public final class DynamoDbRecordMapper {
 
     static String createdAtKey(String createdAt, String recordId) {
         return "CREATED_AT#" + createdAt + "#" + recordId;
+    }
+
+    static String createdAtPrefix(Instant createdAt) {
+        return "CREATED_AT#" + CREATED_AT_FORMAT.format(createdAt);
     }
 
     static AttributeValue string(String value) {
