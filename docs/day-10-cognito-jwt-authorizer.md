@@ -2,10 +2,10 @@
 
 ## Scope and current state
 
-This repository has no API Gateway or Cognito infrastructure-as-code, and the
-admin review routes are not implemented yet. This deliverable defines the
-deployment configuration and authorization contract for those routes; it does
-not claim that an AWS account has been configured.
+This repository has no API Gateway or Cognito infrastructure-as-code. The
+leader engagement routes described here are implemented by
+`LeaderEngagementApiHandler`, but this document defines deployment
+configuration only; it does not claim that an AWS account has been configured.
 
 Use an API Gateway **HTTP API JWT authorizer** to validate Cognito access
 tokens, with route scopes to separate read and write operations. API Gateway's
