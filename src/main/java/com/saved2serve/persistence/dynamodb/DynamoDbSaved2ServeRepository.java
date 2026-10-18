@@ -10,6 +10,7 @@ import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.ChurchDirectoryRepository;
 import com.saved2serve.repository.DevotionLinkRepository;
 import com.saved2serve.repository.EngagementRepository;
+import com.saved2serve.repository.EngagementQueueEntry;
 import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.repository.Page;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -20,12 +21,18 @@ import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.dynamodb.model.Select;
+import software.amazon.awssdk.services.dynamodb.model.TransactWriteItem;
+import software.amazon.awssdk.services.dynamodb.model.TransactWriteItemsRequest;
+import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
+import software.amazon.awssdk.services.dynamodb.model.Update;
 import software.amazon.awssdk.services.kms.KmsClient;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.time.Instant;
+import java.util.UUID;
 
 public final class DynamoDbSaved2ServeRepository
         implements InterestRepository, EngagementRepository, ChurchDirectoryRepository, DevotionLinkRepository {
@@ -198,9 +205,14 @@ public final class DynamoDbSaved2ServeRepository
                 .tableName(tableName)
                 .indexName(STATUS_CREATED_AT_INDEX)
                 .keyConditionExpression("#status = :status")
-                .expressionAttributeNames(Map.of("#status", DynamoDbRecordMapper.GSI1PK))
+                .filterExpression("#entityType = :entityType")
+                .expressionAttributeNames(Map.of(
+                        "#status", DynamoDbRecordMapper.GSI1PK,
+                        "#entityType", "entityType"
+                ))
                 .expressionAttributeValues(Map.of(
-                        ":status", DynamoDbRecordMapper.string("STATUS#" + status.name())
+                        ":status", DynamoDbRecordMapper.string("STATUS#" + status.name()),
+                        ":entityType", DynamoDbRecordMapper.string("ENGAGEMENT")
                 ))
                 .scanIndexForward(false)
                 .limit(pageSize);
@@ -210,6 +222,170 @@ public final class DynamoDbSaved2ServeRepository
         QueryResponse response = dynamoDbClient.query(query.build());
         List<Engagement> items = response.items().stream().map(mapper::toEngagement).toList();
         return new Page<>(items, DynamoDbPageCursor.encode(response.lastEvaluatedKey()));
+    }
+
+    @Override
+    public Page<EngagementQueueEntry> findQueue(
+            SubmissionStatus status,
+            Instant fromInclusive,
+            Instant toExclusive,
+            int pageSize,
+            String cursor
+    ) {
+        Objects.requireNonNull(status, "status must not be null");
+        validatePageSize(pageSize);
+        if (fromInclusive != null && toExclusive != null && !fromInclusive.isBefore(toExclusive)) {
+            throw new IllegalArgumentException("from must be before to.");
+        }
+        String fromKey = fromInclusive == null ? "CREATED_AT#" : DynamoDbRecordMapper.createdAtPrefix(fromInclusive);
+        String toKey = toExclusive == null
+                ? "CREATED_AT#\uffff"
+                : DynamoDbRecordMapper.createdAtPrefix(toExclusive);
+        QueryRequest.Builder query = QueryRequest.builder()
+                .tableName(tableName)
+                .indexName(STATUS_CREATED_AT_INDEX)
+                .keyConditionExpression("#status = :status AND #statusSort BETWEEN :from AND :to")
+                .filterExpression("#entityType = :entityType")
+                .expressionAttributeNames(Map.of(
+                        "#status", DynamoDbRecordMapper.GSI1PK,
+                        "#statusSort", DynamoDbRecordMapper.GSI1SK,
+                        "#entityType", "entityType"
+                ))
+                .expressionAttributeValues(Map.of(
+                        ":status", DynamoDbRecordMapper.string("STATUS#" + status.name()),
+                        ":from", DynamoDbRecordMapper.string(fromKey),
+                        ":to", DynamoDbRecordMapper.string(toKey),
+                        ":entityType", DynamoDbRecordMapper.string("ENGAGEMENT")
+                ))
+                .scanIndexForward(false)
+                .limit(pageSize);
+        if (cursor != null) {
+            Map<String, AttributeValue> key = DynamoDbPageCursor.decode(cursor);
+            validateQueueCursor(key, status, fromKey, toKey);
+            query.exclusiveStartKey(key);
+        }
+        QueryRequest request = query.build();
+        List<EngagementQueueEntry> items = new ArrayList<>();
+        QueryResponse response;
+        do {
+            response = dynamoDbClient.query(request);
+            response.items().stream().map(mapper::toEngagementQueueEntry).forEach(items::add);
+            if (items.size() < pageSize && response.lastEvaluatedKey() != null
+                    && !response.lastEvaluatedKey().isEmpty()) {
+                request = request.toBuilder().exclusiveStartKey(response.lastEvaluatedKey()).build();
+            } else {
+                break;
+            }
+        } while (true);
+        return new Page<>(
+                items.size() <= pageSize ? items : items.subList(0, pageSize),
+                DynamoDbPageCursor.encode(response.lastEvaluatedKey())
+        );
+    }
+
+    @Override
+    public ReviewResult review(
+            String engagementId,
+            SubmissionStatus newStatus,
+            String reviewerId,
+            Instant reviewedAt
+    ) {
+        String normalizedId = requireNonBlank(engagementId, "engagementId");
+        if (newStatus != SubmissionStatus.APPROVED && newStatus != SubmissionStatus.REJECTED) {
+            throw new IllegalArgumentException("A review status must be APPROVED or REJECTED.");
+        }
+        String normalizedReviewer = requireNonBlank(reviewerId, "reviewerId");
+        Objects.requireNonNull(reviewedAt, "reviewedAt must not be null");
+
+        QueryResponse lookup = dynamoDbClient.query(QueryRequest.builder()
+                .tableName(tableName)
+                .keyConditionExpression("#pk = :pk AND begins_with(#sk, :engagementPrefix)")
+                .expressionAttributeNames(Map.of(
+                        "#pk", DynamoDbRecordMapper.PK,
+                        "#sk", DynamoDbRecordMapper.SK
+                ))
+                .expressionAttributeValues(Map.of(
+                        ":pk", DynamoDbRecordMapper.string("ENTITY#" + normalizedId),
+                        ":engagementPrefix", DynamoDbRecordMapper.string("TYPE#ENGAGEMENT#")
+                ))
+                .consistentRead(true)
+                .limit(1)
+                .build());
+        if (lookup.items().isEmpty()) {
+            return ReviewResult.NOT_FOUND;
+        }
+
+        Map<String, AttributeValue> engagement = lookup.items().getFirst();
+        String currentStatus = requiredAttribute(engagement, "status");
+        if (!SubmissionStatus.PENDING_REVIEW.name().equals(currentStatus)) {
+            return ReviewResult.INVALID_TRANSITION;
+        }
+        String previousStatus = currentStatus;
+        Map<String, AttributeValue> key = Map.of(
+                DynamoDbRecordMapper.PK, requiredAttributeValue(engagement, DynamoDbRecordMapper.PK),
+                DynamoDbRecordMapper.SK, requiredAttributeValue(engagement, DynamoDbRecordMapper.SK)
+        );
+        String reviewedAtValue = reviewedAt.toString();
+        String reviewId = UUID.randomUUID().toString();
+        Map<String, AttributeValue> auditItem = Map.of(
+                DynamoDbRecordMapper.PK, DynamoDbRecordMapper.string("ENTITY#" + normalizedId),
+                DynamoDbRecordMapper.SK, DynamoDbRecordMapper.string(
+                        "REVIEW#" + reviewedAtValue + "#" + reviewId
+                ),
+                "recordId", DynamoDbRecordMapper.string(reviewId),
+                "entityType", DynamoDbRecordMapper.string("ENGAGEMENT_REVIEW"),
+                "engagementId", DynamoDbRecordMapper.string(normalizedId),
+                "previousStatus", DynamoDbRecordMapper.string(previousStatus),
+                "status", DynamoDbRecordMapper.string(newStatus.name()),
+                "reviewerId", DynamoDbRecordMapper.string(normalizedReviewer),
+                "reviewedAt", DynamoDbRecordMapper.string(reviewedAtValue)
+        );
+        try {
+            dynamoDbClient.transactWriteItems(TransactWriteItemsRequest.builder()
+                    .transactItems(
+                            TransactWriteItem.builder().update(Update.builder()
+                                    .tableName(tableName)
+                                    .key(key)
+                                    .updateExpression("SET #status = :newStatus, #statusKey = :newStatusKey, "
+                                            + "#reviewedAt = :reviewedAt, #reviewedBy = :reviewedBy")
+                                    .conditionExpression("#status = :pending AND #entityType = :entityType")
+                                    .expressionAttributeNames(Map.of(
+                                            "#status", "status",
+                                            "#statusKey", DynamoDbRecordMapper.GSI1PK,
+                                            "#reviewedAt", "reviewedAt",
+                                            "#reviewedBy", "reviewedBy",
+                                            "#entityType", "entityType"
+                                    ))
+                                    .expressionAttributeValues(Map.of(
+                                            ":newStatus", DynamoDbRecordMapper.string(newStatus.name()),
+                                            ":newStatusKey", DynamoDbRecordMapper.string(
+                                                    "STATUS#" + newStatus.name()
+                                            ),
+                                            ":reviewedAt", DynamoDbRecordMapper.string(reviewedAtValue),
+                                            ":reviewedBy", DynamoDbRecordMapper.string(normalizedReviewer),
+                                            ":pending", DynamoDbRecordMapper.string(
+                                                    SubmissionStatus.PENDING_REVIEW.name()
+                                            ),
+                                            ":entityType", DynamoDbRecordMapper.string("ENGAGEMENT")
+                                    ))
+                                    .build()).build(),
+                            TransactWriteItem.builder().put(software.amazon.awssdk.services.dynamodb.model.Put
+                                    .builder()
+                                    .tableName(tableName)
+                                    .item(auditItem)
+                                    .conditionExpression("attribute_not_exists(#pk)")
+                                    .expressionAttributeNames(Map.of("#pk", DynamoDbRecordMapper.PK))
+                                    .build()).build()
+                    )
+                    .build());
+            return ReviewResult.UPDATED;
+        } catch (TransactionCanceledException canceled) {
+            if (canceled.cancellationReasons() != null && canceled.cancellationReasons().stream()
+                    .anyMatch(reason -> "ConditionalCheckFailed".equals(reason.code()))) {
+                return ReviewResult.INVALID_TRANSITION;
+            }
+            throw canceled;
+        }
     }
 
     @Override
@@ -299,6 +475,32 @@ public final class DynamoDbSaved2ServeRepository
         if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new IllegalArgumentException("pageSize must be between 1 and " + MAX_PAGE_SIZE + ".");
         }
+    }
+
+    private static void validateQueueCursor(
+            Map<String, AttributeValue> key,
+            SubmissionStatus status,
+            String fromKey,
+            String toKey
+    ) {
+        String cursorStatus = requiredAttribute(key, DynamoDbRecordMapper.GSI1PK);
+        String cursorSort = requiredAttribute(key, DynamoDbRecordMapper.GSI1SK);
+        if (!("STATUS#" + status.name()).equals(cursorStatus)
+                || cursorSort.compareTo(fromKey) < 0 || cursorSort.compareTo(toKey) > 0) {
+            throw new IllegalArgumentException("Invalid DynamoDB pagination cursor.");
+        }
+    }
+
+    private static AttributeValue requiredAttributeValue(Map<String, AttributeValue> item, String name) {
+        AttributeValue value = item.get(name);
+        if (value == null || value.s() == null || value.s().isBlank()) {
+            throw new IllegalStateException("DynamoDB item is missing required key: " + name);
+        }
+        return value;
+    }
+
+    private static String requiredAttribute(Map<String, AttributeValue> item, String name) {
+        return requiredAttributeValue(item, name).s();
     }
 
     private static String requireNonBlank(String value, String name) {
