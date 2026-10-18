@@ -7,6 +7,8 @@ import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.InterestRepository;
+import com.saved2serve.repository.EngagementQueueEntry;
+import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.repository.Page;
 import com.saved2serve.util.EmailHasher;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,7 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.CancellationReason;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
@@ -22,6 +25,8 @@ import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.dynamodb.model.Select;
+import software.amazon.awssdk.services.dynamodb.model.TransactWriteItemsRequest;
+import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
 import software.amazon.awssdk.services.kms.KmsClient;
 import software.amazon.awssdk.services.kms.model.DecryptRequest;
 import software.amazon.awssdk.services.kms.model.DecryptResponse;
@@ -41,6 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -312,6 +318,180 @@ class DynamoDbSaved2ServeRepositoryTest {
                 firstRequest.expressionAttributeValues().get(":status").s());
         assertEquals(1, firstRequest.limit());
         assertFalse(firstRequest.scanIndexForward());
+    }
+
+    @Test
+    void engagementQueueFiltersByStatusAndTimeAndReturnsRecordMetadata() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(kmsClient.decrypt(any(DecryptRequest.class))).thenReturn(DecryptResponse.builder()
+                .plaintext(SdkBytes.fromUtf8String("person@example.com"))
+                .build());
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
+                .items(List.of(engagementItem("first")))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+        Instant from = Instant.parse("2026-01-01T00:00:00Z");
+        Instant to = Instant.parse("2026-01-02T00:00:00Z");
+
+        Page<EngagementQueueEntry> page = repository.findQueue(
+                SubmissionStatus.PENDING_REVIEW, from, to, 10, null
+        );
+
+        assertEquals("first", page.items().getFirst().engagementId());
+        assertEquals(Instant.parse("2026-01-01T00:00:00Z"), page.items().getFirst().createdAt());
+        assertEquals("first", page.items().getFirst().engagement().name());
+        ArgumentCaptor<QueryRequest> request = ArgumentCaptor.forClass(QueryRequest.class);
+        verify(dynamoDbClient).query(request.capture());
+        assertEquals(DynamoDbSaved2ServeRepository.STATUS_CREATED_AT_INDEX, request.getValue().indexName());
+        assertEquals("#status = :status AND #statusSort BETWEEN :from AND :to",
+                request.getValue().keyConditionExpression());
+        assertEquals("STATUS#PENDING_REVIEW",
+                request.getValue().expressionAttributeValues().get(":status").s());
+        assertEquals("CREATED_AT#2026-01-01T00:00:00.000000000Z",
+                request.getValue().expressionAttributeValues().get(":from").s());
+        assertEquals("CREATED_AT#2026-01-02T00:00:00.000000000Z",
+                request.getValue().expressionAttributeValues().get(":to").s());
+        assertEquals("ENGAGEMENT",
+                request.getValue().expressionAttributeValues().get(":entityType").s());
+    }
+
+    @Test
+    void engagementQueueContinuesWithBoundCursorAndRejectsCursorForAnotherStatus() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(kmsClient.decrypt(any(DecryptRequest.class))).thenReturn(DecryptResponse.builder()
+                .plaintext(SdkBytes.fromUtf8String("person@example.com"))
+                .build());
+        Map<String, AttributeValue> lastKey = Map.of(
+                "PK", string("ENTITY#first"),
+                "SK", string("TYPE#ENGAGEMENT#2026-01-01T00:00:00Z"),
+                "GSI1PK", string("STATUS#PENDING_REVIEW"),
+                "GSI1SK", string("CREATED_AT#2026-01-01T00:00:00Z#first")
+        );
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(
+                QueryResponse.builder().items(List.of(engagementItem("first"))).lastEvaluatedKey(lastKey).build(),
+                QueryResponse.builder().items(List.of(engagementItem("second"))).build()
+        );
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        Page<EngagementQueueEntry> firstPage = repository.findQueue(
+                SubmissionStatus.PENDING_REVIEW,
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-02T00:00:00Z"),
+                1,
+                null
+        );
+        Page<EngagementQueueEntry> secondPage = repository.findQueue(
+                SubmissionStatus.PENDING_REVIEW,
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-02T00:00:00Z"),
+                1,
+                firstPage.nextCursor()
+        );
+
+        assertEquals("first", firstPage.items().getFirst().engagementId());
+        assertNotNull(firstPage.nextCursor());
+        assertEquals("second", secondPage.items().getFirst().engagementId());
+        assertNull(secondPage.nextCursor());
+        ArgumentCaptor<QueryRequest> requests = ArgumentCaptor.forClass(QueryRequest.class);
+        verify(dynamoDbClient, org.mockito.Mockito.times(2)).query(requests.capture());
+        assertEquals(lastKey, requests.getAllValues().get(1).exclusiveStartKey());
+
+        Map<String, AttributeValue> wrongStatusCursor = Map.of(
+                "PK", string("ENTITY#first"),
+                "SK", string("TYPE#ENGAGEMENT#2026-01-01T00:00:00Z"),
+                "GSI1PK", string("STATUS#APPROVED"),
+                "GSI1SK", string("CREATED_AT#2026-01-01T00:00:00Z#first")
+        );
+        assertThrows(IllegalArgumentException.class, () -> repository.findQueue(
+                SubmissionStatus.PENDING_REVIEW,
+                null,
+                null,
+                1,
+                DynamoDbPageCursor.encode(wrongStatusCursor)
+        ));
+        verify(dynamoDbClient, org.mockito.Mockito.times(2)).query(any(QueryRequest.class));
+    }
+
+    @Test
+    void reviewUsesConditionalAtomicUpdateAndWritesMinimalAuditEvent() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
+                .items(List.of(engagementItem("target")))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, mock(KmsClient.class), "Saved2ServeRecords", "alias/test-email-key"
+        );
+        Instant reviewedAt = Instant.parse("2026-10-26T12:00:00Z");
+
+        assertEquals(EngagementRepository.ReviewResult.UPDATED, repository.review(
+                "target", SubmissionStatus.APPROVED, "leader-subject", reviewedAt
+        ));
+
+        ArgumentCaptor<TransactWriteItemsRequest> request =
+                ArgumentCaptor.forClass(TransactWriteItemsRequest.class);
+        verify(dynamoDbClient).transactWriteItems(request.capture());
+        var actions = request.getValue().transactItems();
+        assertEquals(2, actions.size());
+        var update = actions.getFirst().update();
+        assertEquals("#status = :pending AND #entityType = :entityType", update.conditionExpression());
+        assertTrue(update.updateExpression().contains("#statusKey = :newStatusKey"));
+        assertEquals("APPROVED", update.expressionAttributeValues().get(":newStatus").s());
+        assertEquals("STATUS#APPROVED", update.expressionAttributeValues().get(":newStatusKey").s());
+        var audit = actions.get(1).put().item();
+        assertEquals("ENGAGEMENT_REVIEW", audit.get("entityType").s());
+        assertEquals("PENDING_REVIEW", audit.get("previousStatus").s());
+        assertEquals("APPROVED", audit.get("status").s());
+        assertEquals("leader-subject", audit.get("reviewerId").s());
+        assertEquals(reviewedAt.toString(), audit.get("reviewedAt").s());
+        assertFalse(audit.containsKey("email"));
+        assertFalse(audit.containsKey("name"));
+        assertFalse(audit.containsKey("message"));
+    }
+
+    @Test
+    void reviewOfMissingEngagementDoesNotWriteAnAuditEvent() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
+                .items(List.of())
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, mock(KmsClient.class), "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        assertEquals(EngagementRepository.ReviewResult.NOT_FOUND, repository.review(
+                "missing", SubmissionStatus.REJECTED, "leader-subject", Instant.now()
+        ));
+
+        verify(dynamoDbClient, never()).transactWriteItems(any(TransactWriteItemsRequest.class));
+    }
+
+    @Test
+    void reviewReturnsConflictWhenConditionalTransactionDetectsConcurrentReview() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
+                .items(List.of(engagementItem("target")))
+                .build());
+        doThrow(TransactionCanceledException.builder()
+                .message("Condition did not match.")
+                .cancellationReasons(List.of(
+                        CancellationReason.builder().code("ConditionalCheckFailed").build(),
+                        CancellationReason.builder().code("None").build()
+                ))
+                .build())
+                .when(dynamoDbClient).transactWriteItems(any(TransactWriteItemsRequest.class));
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, mock(KmsClient.class), "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        assertEquals(EngagementRepository.ReviewResult.INVALID_TRANSITION, repository.review(
+                "target", SubmissionStatus.REJECTED, "leader-subject", Instant.now()
+        ));
     }
 
     @Test
