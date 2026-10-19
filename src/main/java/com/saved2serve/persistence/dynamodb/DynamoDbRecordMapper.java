@@ -6,9 +6,11 @@ import com.saved2serve.domain.DevotionLink;
 import com.saved2serve.domain.DevotionLinkStatus;
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
+import com.saved2serve.domain.FollowUpRecordType;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.EngagementQueueEntry;
+import com.saved2serve.repository.FollowUpRecipient;
 import com.saved2serve.util.EmailHasher;
 import com.saved2serve.validation.Saved2ServeValidator;
 import software.amazon.awssdk.core.SdkBytes;
@@ -29,7 +31,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 
 public final class DynamoDbRecordMapper {
     static final String PK = "PK";
@@ -54,7 +55,7 @@ public final class DynamoDbRecordMapper {
 
     public Map<String, AttributeValue> toItem(Interest interest) {
         Objects.requireNonNull(interest, "interest must not be null");
-        String recordId = UUID.randomUUID().toString();
+        String recordId = interest.recordId();
         String createdAt = CREATED_AT_FORMAT.format(Instant.now());
         Map<String, AttributeValue> item = baseItem(recordId, "INTEREST", createdAt, interest.areaCode(), interest.email());
         item.put("name", string(interest.name()));
@@ -62,6 +63,10 @@ public final class DynamoDbRecordMapper {
         item.put("consent", bool(interest.consent()));
         item.put("consentedAt", string(interest.consentedAt().toString()));
         item.put("source", string(interest.source()));
+        item.put("followUpConsent", bool(interest.followUpConsent()));
+        if (interest.followUpConsentedAt() != null) {
+            item.put("followUpConsentedAt", string(interest.followUpConsentedAt().toString()));
+        }
         return Map.copyOf(item);
     }
 
@@ -72,12 +77,13 @@ public final class DynamoDbRecordMapper {
     ) {
         requireNonBlank(idempotencyKeyHash, "idempotencyKeyHash");
         requireNonBlank(requestFingerprint, "requestFingerprint");
-        Map<String, AttributeValue> item = new HashMap<>(toItem(interest));
-        item.put(PK, string("IDEMPOTENCY#" + idempotencyKeyHash));
-        item.put(SK, string("REGISTRATION"));
-        item.put("idempotencyKeyHash", string(idempotencyKeyHash));
-        item.put("requestFingerprint", string(requestFingerprint));
-        return Map.copyOf(item);
+        return Map.of(
+                PK, string("IDEMPOTENCY#" + idempotencyKeyHash),
+                SK, string("REGISTRATION"),
+                "idempotencyKeyHash", string(idempotencyKeyHash),
+                "requestFingerprint", string(requestFingerprint),
+                "recordId", string(interest.recordId())
+        );
     }
 
     static Map<String, AttributeValue> idempotencyKey(String idempotencyKeyHash) {
@@ -93,7 +99,7 @@ public final class DynamoDbRecordMapper {
             throw new IllegalArgumentException("Only pending-review engagements can be submitted.");
         }
         byte[] privateContent = encodePrivateContent(engagement);
-        String recordId = UUID.randomUUID().toString();
+        String recordId = engagement.recordId();
         String createdAt = CREATED_AT_FORMAT.format(Instant.now());
         Map<String, AttributeValue> item = baseItem(recordId, "ENGAGEMENT", createdAt, engagement.areaCode(), engagement.email());
         String status = engagement.status().name();
@@ -101,6 +107,10 @@ public final class DynamoDbRecordMapper {
         item.put("consent", bool(engagement.consent()));
         item.put("type", string(engagement.type().name()));
         item.put("status", string(status));
+        item.put("followUpConsent", bool(engagement.followUpConsent()));
+        if (engagement.followUpConsentedAt() != null) {
+            item.put("followUpConsentedAt", string(engagement.followUpConsentedAt().toString()));
+        }
         item.put(GSI1PK, string("STATUS#" + status));
         item.put(GSI1SK, string(createdAtKey(createdAt, recordId)));
         return Map.copyOf(item);
@@ -170,7 +180,10 @@ public final class DynamoDbRecordMapper {
                 requiredString(item, "phone"),
                 requiredBoolean(item, "consent"),
                 requiredString(item, "source"),
-                Instant.parse(requiredString(item, "consentedAt"))
+                Instant.parse(requiredString(item, "consentedAt")),
+                requiredString(item, "recordId"),
+                optionalBoolean(item, "followUpConsent"),
+                optionalInstant(item, "followUpConsentedAt")
         );
     }
 
@@ -185,7 +198,33 @@ public final class DynamoDbRecordMapper {
                 requiredBoolean(item, "consent"),
                 EngagementType.valueOf(requiredString(item, "type")),
                 privateContent.message(),
-                SubmissionStatus.valueOf(requiredString(item, "status"))
+                SubmissionStatus.valueOf(requiredString(item, "status")),
+                recordId,
+                optionalBoolean(item, "followUpConsent"),
+                optionalInstant(item, "followUpConsentedAt")
+        );
+    }
+
+    public FollowUpRecipient toFollowUpRecipient(
+            Map<String, AttributeValue> item,
+            FollowUpRecordType recordType
+    ) {
+        Objects.requireNonNull(recordType, "recordType must not be null");
+        boolean consented = optionalBoolean(item, "followUpConsent");
+        if (!consented) {
+            return new FollowUpRecipient(
+                    requiredString(item, "recordId"), recordType, "", "", false
+            );
+        }
+        if (recordType == FollowUpRecordType.INTEREST) {
+            Interest interest = toInterest(item);
+            return new FollowUpRecipient(
+                    interest.recordId(), recordType, interest.name(), interest.email(), true
+            );
+        }
+        Engagement engagement = toEngagement(item);
+        return new FollowUpRecipient(
+                engagement.recordId(), recordType, engagement.name(), engagement.email(), true
         );
     }
 
@@ -371,7 +410,7 @@ public final class DynamoDbRecordMapper {
         return AttributeValue.builder().b(SdkBytes.fromByteArray(value)).build();
     }
 
-    private static AttributeValue bool(boolean value) {
+    static AttributeValue bool(boolean value) {
         return AttributeValue.builder().bool(value).build();
     }
 
@@ -399,6 +438,11 @@ public final class DynamoDbRecordMapper {
             throw new IllegalStateException("DynamoDB item is missing required attribute: " + name);
         }
         return value.bool();
+    }
+
+    private static boolean optionalBoolean(Map<String, AttributeValue> item, String name) {
+        AttributeValue value = item.get(name);
+        return value != null && Boolean.TRUE.equals(value.bool());
     }
 
     private static String requireNonBlank(String value, String name) {
