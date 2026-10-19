@@ -4,8 +4,10 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
+import com.saved2serve.domain.FollowUpRecordType;
 import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.service.EngagementService;
+import com.saved2serve.service.FollowUpQueue;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
@@ -57,6 +59,26 @@ class EngagementApiHandlerTest {
     }
 
     @Test
+    void recordsAndQueuesFollowUpOnlyAfterExplicitSeparateConsent() {
+        EngagementRepository repository = mock(EngagementRepository.class);
+        FollowUpQueue queue = mock(FollowUpQueue.class);
+        String body = BODY.stripTrailing().substring(0, BODY.stripTrailing().length() - 1)
+                + ",\"followUpConsent\":true}";
+
+        APIGatewayV2HTTPResponse response = new EngagementApiHandler(new EngagementService(
+                repository, java.time.Clock.systemUTC(), queue
+        )).handleRequest(event(body, Map.of("content-type", "application/json")), null);
+
+        assertEquals(201, response.getStatusCode());
+        ArgumentCaptor<Engagement> saved = ArgumentCaptor.forClass(Engagement.class);
+        verify(repository).save(saved.capture());
+        assertTrue(saved.getValue().followUpConsent());
+        assertEquals(java.time.Instant.now().getEpochSecond(),
+                saved.getValue().followUpConsentedAt().getEpochSecond());
+        verify(queue).enqueue(saved.getValue().recordId(), FollowUpRecordType.ENGAGEMENT);
+    }
+
+    @Test
     void supportsBase64PayloadAndRejectsUnknownOrInvalidFields() {
         EngagementRepository repository = mock(EngagementRepository.class);
         EngagementApiHandler handler = handler(repository);
@@ -67,12 +89,17 @@ class EngagementApiHandlerTest {
         String unknownField = BODY.stripTrailing().substring(0, BODY.stripTrailing().length() - 1)
                 + ",\"fullAddress\":\"private\"}";
         String invalidType = BODY.replace("\"type\":\"HELP_REQUEST\"", "\"type\":\"OTHER\"");
+        String invalidFollowUpConsent = BODY.stripTrailing().substring(0, BODY.stripTrailing().length() - 1)
+                + ",\"followUpConsent\":\"yes\"}";
 
         assertEquals(201, handler.handleRequest(base64, null).getStatusCode());
         assertEquals(400, handler.handleRequest(event(unknownField, Map.of(
                 "content-type", "application/json"
         )), null).getStatusCode());
         assertEquals(400, handler.handleRequest(event(invalidType, Map.of(
+                "content-type", "application/json"
+        )), null).getStatusCode());
+        assertEquals(400, handler.handleRequest(event(invalidFollowUpConsent, Map.of(
                 "content-type", "application/json"
         )), null).getStatusCode());
         verify(repository, org.mockito.Mockito.times(1)).save(any());
