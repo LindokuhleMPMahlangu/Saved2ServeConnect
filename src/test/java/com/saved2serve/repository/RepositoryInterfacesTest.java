@@ -15,12 +15,14 @@ class RepositoryInterfacesTest {
     void repositoryContractsUseNoAwsSdkTypes() {
         assertTrue(InterestRepository.class.isInterface());
         assertTrue(EngagementRepository.class.isInterface());
+        assertTrue(FollowUpRepository.class.isInterface());
         assertTrue(ChurchDirectoryRepository.class.isInterface());
         assertTrue(DevotionLinkRepository.class.isInterface());
 
         Stream.of(
                         InterestRepository.class,
                         EngagementRepository.class,
+                        FollowUpRepository.class,
                         ChurchDirectoryRepository.class,
                         DevotionLinkRepository.class
                 )
