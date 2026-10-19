@@ -10,7 +10,8 @@ public record InterestRequest(
         String areaCode,
         String phone,
         boolean consent,
-        String source
+        String source,
+        boolean followUpConsent
 ) {
     public static final Set<String> ALLOWED_FIELDS = Set.of(
             "idempotencyKey",
@@ -19,8 +20,21 @@ public record InterestRequest(
             "areaCode",
             "phone",
             "consent",
-            "source"
+            "source",
+            "followUpConsent"
     );
+
+    public InterestRequest(
+            String idempotencyKey,
+            String name,
+            String email,
+            String areaCode,
+            String phone,
+            boolean consent,
+            String source
+    ) {
+        this(idempotencyKey, name, email, areaCode, phone, consent, source, false);
+    }
 
     public InterestRequest {
         idempotencyKey = normalize(idempotencyKey);
