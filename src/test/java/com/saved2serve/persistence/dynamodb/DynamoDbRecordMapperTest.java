@@ -97,11 +97,13 @@ class DynamoDbRecordMapperTest {
         assertEquals("REGISTRATION", item.get("SK").s());
         assertEquals("idempotency-hash", item.get("idempotencyKeyHash").s());
         assertEquals("request-fingerprint", item.get("requestFingerprint").s());
-        assertEquals(CONSENTED_AT.toString(), item.get("consentedAt").s());
+        assertTrue(item.containsKey("recordId"));
+        assertEquals(5, item.size());
         assertFalse(item.containsKey("idempotencyKey"));
         assertFalse(item.containsKey("email"));
-        assertEquals("AREA#10001", item.get("GSI2PK").s());
-        assertEquals("EMAIL_HASH#" + EmailHasher.sha256(EMAIL), item.get("GSI3PK").s());
+        assertFalse(item.containsKey("consentedAt"));
+        assertFalse(item.containsKey("GSI2PK"));
+        assertFalse(item.containsKey("GSI3PK"));
     }
 
     @Test
