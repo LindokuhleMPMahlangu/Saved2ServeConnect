@@ -2,6 +2,7 @@ package com.saved2serve.persistence.dynamodb;
 
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementType;
+import com.saved2serve.domain.FollowUpRecordType;
 import com.saved2serve.domain.ChurchDirectoryRecord;
 import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.Interest;
@@ -9,6 +10,7 @@ import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.repository.EngagementQueueEntry;
 import com.saved2serve.repository.EngagementRepository;
+import com.saved2serve.repository.FollowUpRecipient;
 import com.saved2serve.repository.Page;
 import com.saved2serve.util.EmailHasher;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,7 @@ import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.dynamodb.model.Select;
 import software.amazon.awssdk.services.dynamodb.model.TransactWriteItemsRequest;
 import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
+import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 import software.amazon.awssdk.services.kms.KmsClient;
 import software.amazon.awssdk.services.kms.model.DecryptRequest;
 import software.amazon.awssdk.services.kms.model.DecryptResponse;
@@ -495,6 +498,74 @@ class DynamoDbSaved2ServeRepositoryTest {
     }
 
     @Test
+    void findRecipientReturnsOnlyConsentStateWithoutDecryptingWhenOptedOut() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
+                .items(List.of(interestItem("opted-out")))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        FollowUpRecipient recipient = repository.findRecipient("opted-out", FollowUpRecordType.INTEREST);
+
+        assertFalse(recipient.consented());
+        assertEquals("", recipient.email());
+        verify(kmsClient, never()).decrypt(any(DecryptRequest.class));
+    }
+
+    @Test
+    void findRecipientDecryptsPrivateFieldsOnlyForCurrentlyConsentedRecord() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        Map<String, AttributeValue> optedIn = new java.util.HashMap<>(interestItem("opted-in"));
+        optedIn.put("followUpConsent", AttributeValue.builder().bool(true).build());
+        optedIn.put("followUpConsentedAt", string(CONSENTED_AT.toString()));
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
+                .items(List.of(optedIn))
+                .build());
+        when(kmsClient.decrypt(any(DecryptRequest.class))).thenReturn(DecryptResponse.builder()
+                .plaintext(SdkBytes.fromUtf8String("alex@example.com"))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        FollowUpRecipient recipient = repository.findRecipient("opted-in", FollowUpRecordType.INTEREST);
+
+        assertTrue(recipient.consented());
+        assertEquals("alex@example.com", recipient.email());
+        assertEquals("opted-in", recipient.name());
+        verify(kmsClient).decrypt(any(DecryptRequest.class));
+    }
+
+    @Test
+    void withdrawalConditionallyRecordsTimestampWithoutDecryptingPrivateData() {
+        DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        KmsClient kmsClient = mock(KmsClient.class);
+        Map<String, AttributeValue> optedIn = new java.util.HashMap<>(interestItem("opted-in"));
+        optedIn.put("followUpConsent", AttributeValue.builder().bool(true).build());
+        when(dynamoDbClient.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
+                .items(List.of(optedIn))
+                .build());
+        DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
+                dynamoDbClient, kmsClient, "Saved2ServeRecords", "alias/test-email-key"
+        );
+
+        assertTrue(repository.withdrawConsent("opted-in", FollowUpRecordType.INTEREST));
+
+        ArgumentCaptor<UpdateItemRequest> update = ArgumentCaptor.forClass(UpdateItemRequest.class);
+        verify(dynamoDbClient).updateItem(update.capture());
+        assertEquals("#consent = :consented AND #entityType = :entityType",
+                update.getValue().conditionExpression());
+        assertEquals(false, update.getValue().expressionAttributeValues().get(":withdrawn").bool());
+        assertEquals("INTEREST", update.getValue().expressionAttributeValues().get(":entityType").s());
+        assertTrue(update.getValue().expressionAttributeValues().containsKey(":withdrawnAt"));
+        verify(kmsClient, never()).decrypt(any(DecryptRequest.class));
+    }
+
+    @Test
     void emptyStatusQueryReturnsEmptyPage() {
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
         KmsClient kmsClient = mock(KmsClient.class);
@@ -664,15 +735,21 @@ class DynamoDbSaved2ServeRepositoryTest {
                 "request-fingerprint"
         ));
 
-        ArgumentCaptor<PutItemRequest> request = ArgumentCaptor.forClass(PutItemRequest.class);
-        verify(dynamoDbClient).putItem(request.capture());
-        assertEquals("attribute_not_exists(#pk)", request.getValue().conditionExpression());
-        assertEquals(Map.of("#pk", "PK"), request.getValue().expressionAttributeNames());
-        assertEquals("IDEMPOTENCY#key-hash", request.getValue().item().get("PK").s());
-        assertEquals("request-fingerprint", request.getValue().item().get("requestFingerprint").s());
-        assertEquals("key-hash", request.getValue().item().get("idempotencyKeyHash").s());
-        assertFalse(request.getValue().item().containsKey("idempotencyKey"));
-        assertFalse(request.getValue().item().containsKey("email"));
+        ArgumentCaptor<TransactWriteItemsRequest> request =
+                ArgumentCaptor.forClass(TransactWriteItemsRequest.class);
+        verify(dynamoDbClient).transactWriteItems(request.capture());
+        assertEquals(2, request.getValue().transactItems().size());
+        var registration = request.getValue().transactItems().getFirst().put();
+        var idempotency = request.getValue().transactItems().get(1).put();
+        assertEquals("attribute_not_exists(#pk)", registration.conditionExpression());
+        assertEquals("attribute_not_exists(#pk)", idempotency.conditionExpression());
+        assertEquals("ENTITY#" + idempotency.item().get("recordId").s(), registration.item().get("PK").s());
+        assertEquals("INTEREST", registration.item().get("entityType").s());
+        assertEquals("request-fingerprint", idempotency.item().get("requestFingerprint").s());
+        assertEquals("key-hash", idempotency.item().get("idempotencyKeyHash").s());
+        assertEquals(5, idempotency.item().size());
+        assertFalse(idempotency.item().containsKey("email"));
+        assertFalse(idempotency.item().containsKey("GSI3PK"));
     }
 
     @Test
@@ -682,9 +759,8 @@ class DynamoDbSaved2ServeRepositoryTest {
         when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
                 .ciphertextBlob(SdkBytes.fromUtf8String("encrypted"))
                 .build());
-        when(dynamoDbClient.putItem(any(PutItemRequest.class))).thenThrow(
-                ConditionalCheckFailedException.builder().message("Already exists").build()
-        );
+        doThrow(TransactionCanceledException.builder().message("Already exists").build())
+                .when(dynamoDbClient).transactWriteItems(any(TransactWriteItemsRequest.class));
         when(dynamoDbClient.getItem(any(GetItemRequest.class))).thenReturn(GetItemResponse.builder()
                 .item(Map.of("requestFingerprint", string("same-fingerprint")))
                 .build());
@@ -706,9 +782,8 @@ class DynamoDbSaved2ServeRepositoryTest {
         when(kmsClient.encrypt(any(EncryptRequest.class))).thenReturn(EncryptResponse.builder()
                 .ciphertextBlob(SdkBytes.fromUtf8String("encrypted"))
                 .build());
-        when(dynamoDbClient.putItem(any(PutItemRequest.class))).thenThrow(
-                ConditionalCheckFailedException.builder().message("Already exists").build()
-        );
+        doThrow(TransactionCanceledException.builder().message("Already exists").build())
+                .when(dynamoDbClient).transactWriteItems(any(TransactWriteItemsRequest.class));
         when(dynamoDbClient.getItem(any(GetItemRequest.class))).thenReturn(GetItemResponse.builder()
                 .item(Map.of("requestFingerprint", string("original-fingerprint")))
                 .build());
