@@ -10,7 +10,8 @@ public record EngagementRequest(
         String phone,
         boolean consent,
         EngagementType type,
-        String message
+        String message,
+        boolean followUpConsent
 ) {
     public static final Set<String> ALLOWED_FIELDS = Set.of(
             "name",
@@ -19,8 +20,21 @@ public record EngagementRequest(
             "phone",
             "consent",
             "type",
-            "message"
+            "message",
+            "followUpConsent"
     );
+
+    public EngagementRequest(
+            String name,
+            String email,
+            String areaCode,
+            String phone,
+            boolean consent,
+            EngagementType type,
+            String message
+    ) {
+        this(name, email, areaCode, phone, consent, type, message, false);
+    }
 
     public EngagementRequest {
         name = normalize(name);
