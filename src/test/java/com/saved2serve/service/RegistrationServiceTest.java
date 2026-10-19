@@ -3,10 +3,13 @@ package com.saved2serve.service;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.InterestRequest;
 import com.saved2serve.repository.InterestRepository;
+import com.saved2serve.domain.FollowUpRecordType;
+import com.saved2serve.service.FollowUpQueue;
 import com.saved2serve.util.Hashing;
 import com.saved2serve.validation.Saved2ServeValidator;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -65,8 +68,55 @@ class RegistrationServiceTest {
                 org.mockito.ArgumentMatchers.eq(fingerprint)
         );
         assertEquals(new Interest(
-                "Alex Smith", "Alex@Example.com", "10001", "5551234567", true, "landing-page", CONSENTED_AT
+                "Alex Smith", "Alex@Example.com", "10001", "5551234567", true, "landing-page",
+                CONSENTED_AT, interest.getValue().recordId(), false, null
         ), interest.getValue());
+    }
+
+    @Test
+    void optedInRegistrationRecordsSeparateConsentAndQueuesOpaqueRecordId() {
+        InterestRepository repository = mock(InterestRepository.class);
+        FollowUpQueue queue = mock(FollowUpQueue.class);
+        InterestRequest request = new InterestRequest(
+                IDEMPOTENCY_KEY, "Alex Smith", "alex@example.com", "10001", "", true,
+                "landing-page", true
+        );
+        when(repository.findRegistrationFingerprintByIdempotencyKey(IDEMPOTENCY_KEY_HASH)).thenReturn(null);
+        when(repository.existsByEmailHash(NORMALIZED_EMAIL_HASH)).thenReturn(false);
+        when(repository.saveIdempotently(any(Interest.class), any(String.class), any(String.class)))
+                .thenReturn(InterestRepository.IdempotentSaveResult.CREATED);
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK, queue);
+
+        assertTrue(service.register(request).valid());
+
+        ArgumentCaptor<Interest> saved = ArgumentCaptor.forClass(Interest.class);
+        verify(repository).saveIdempotently(saved.capture(), any(String.class), any(String.class));
+        assertTrue(saved.getValue().followUpConsent());
+        assertEquals(CONSENTED_AT, saved.getValue().followUpConsentedAt());
+        verify(queue).enqueue(saved.getValue().recordId(), FollowUpRecordType.INTEREST);
+    }
+
+    @Test
+    void idempotentOptInReplayRetriesQueueUsingSameOpaqueRecordId() {
+        InterestRepository repository = mock(InterestRepository.class);
+        FollowUpQueue queue = mock(FollowUpQueue.class);
+        InterestRequest request = new InterestRequest(
+                IDEMPOTENCY_KEY, "Alex Smith", "alex@example.com", "10001", "", true,
+                "landing-page", true
+        );
+        when(repository.findRegistrationFingerprintByIdempotencyKey(IDEMPOTENCY_KEY_HASH))
+                .thenReturn(fingerprint(request), fingerprint(request));
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK, queue);
+
+        assertTrue(service.register(request).valid());
+        assertTrue(service.register(request).valid());
+
+        ArgumentCaptor<String> queuedIds = ArgumentCaptor.forClass(String.class);
+        verify(queue, org.mockito.Mockito.times(2)).enqueue(
+                queuedIds.capture(), org.mockito.ArgumentMatchers.eq(FollowUpRecordType.INTEREST)
+        );
+        assertEquals(queuedIds.getAllValues().getFirst(), queuedIds.getAllValues().get(1));
+        verify(repository, never()).saveIdempotently(any(Interest.class), any(String.class), any(String.class));
     }
 
     @Test
@@ -273,7 +323,8 @@ class RegistrationServiceTest {
                 + field(request.areaCode())
                 + field(request.phone())
                 + field(Boolean.toString(request.consent()))
-                + field(request.source());
+                + field(request.source())
+                + field(Boolean.toString(request.followUpConsent()));
         return Hashing.sha256(canonicalRequest);
     }
 
