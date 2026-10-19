@@ -81,12 +81,16 @@ The devotion-link field contract, approved source rules, leader review workflow,
 
 Leader engagement review is implemented in `LeaderEngagementApiHandler`: `GET /v1/admin/engagements` supports status, inclusive lower/exclusive upper time bounds, and bounded opaque-cursor pagination; `PATCH /v1/admin/engagements/{engagementId}` allows only `PENDING_REVIEW` to `APPROVED` or `REJECTED`. Both routes require their Day 10 scope and the `Leaders` group. DynamoDB conditionally updates the engagement and writes a minimal reviewer/status/timestamp audit record atomically. Reviewed submissions remain private and are not published by this flow. See [docs/day-11-leader-engagement-review.md](docs/day-11-leader-engagement-review.md) for route contracts, privacy boundaries, and test evidence; it does not claim deployment to AWS.
 
+## Day 12 deliverables included
+
+Interest and engagement submissions accept a separate optional `followUpConsent` choice, defaulting to false and recorded with a server timestamp. Only opted-in records are queued to SQS; messages contain only record IDs and record types. The worker rechecks current consent before SES delivery, uses generic email content, and returns per-message retry failures. Withdrawal uses a signed token and a confirmation-page POST, so link-scanner GET requests cannot revoke consent. See [docs/day-12-opt-in-follow-up-notifications.md](docs/day-12-opt-in-follow-up-notifications.md) for the request flow, required environment variables, least-privilege AWS configuration, retry caveats, and test command. AWS resources are not provisioned or deployed by this change.
+
 ## Java and dependency baseline
 
 - Java 21
 - Maven 3.9+
 - AWS Lambda Java Core and Events
-- AWS SDK for Java 2.x DynamoDB and KMS clients
+- AWS SDK for Java 2.x DynamoDB, KMS, SQS, and SES v2 clients
 - Jackson for JSON serialization
 - JUnit 5 and Mockito for testing
 
@@ -169,5 +173,6 @@ Additional supporting materials are available in the docs folder:
 - day-07-seeding-church-candidates.md
 - day-10-cognito-jwt-authorizer.md
 - day-11-leader-engagement-review.md
+- day-12-opt-in-follow-up-notifications.md
 
 The architecture document is intentionally kept separate from this README.
