@@ -3,9 +3,13 @@ package com.saved2serve.lambda;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import com.saved2serve.repository.InterestRepository;
+import com.saved2serve.domain.FollowUpRecordType;
+import com.saved2serve.domain.Interest;
+import com.saved2serve.service.FollowUpQueue;
 import com.saved2serve.service.RegistrationService;
 import com.saved2serve.util.Hashing;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.services.dynamodb.model.DynamoDbException;
 
@@ -97,6 +101,8 @@ class InterestApiHandlerTest {
         String unknownField = BODY.stripTrailing().substring(0, BODY.stripTrailing().length() - 1)
                 + ",\"fullAddress\":\"private\"}";
         String invalidType = BODY.replace("\"consent\":true", "\"consent\":\"yes\"");
+        String invalidFollowUpConsent = BODY.stripTrailing().substring(0, BODY.stripTrailing().length() - 1)
+                + ",\"followUpConsent\":\"yes\"}";
 
         APIGatewayV2HTTPResponse unknown = handler.handleRequest(
                 event(unknownField, Map.of("content-type", "application/json")), null
@@ -104,10 +110,38 @@ class InterestApiHandlerTest {
         APIGatewayV2HTTPResponse wrongType = handler.handleRequest(
                 event(invalidType, Map.of("content-type", "application/json")), null
         );
+        APIGatewayV2HTTPResponse wrongFollowUpType = handler.handleRequest(
+                event(invalidFollowUpConsent, Map.of("content-type", "application/json")), null
+        );
 
         assertEquals(400, unknown.getStatusCode());
         assertEquals(400, wrongType.getStatusCode());
+        assertEquals(400, wrongFollowUpType.getStatusCode());
         assertFalse(unknown.getBody().contains("private"));
+    }
+
+    @Test
+    void recordsAndQueuesFollowUpOnlyWhenSeparateConsentIsTrue() {
+        InterestRepository repository = mock(InterestRepository.class);
+        FollowUpQueue queue = mock(FollowUpQueue.class);
+        when(repository.findRegistrationFingerprintByIdempotencyKey(Hashing.sha256("request-123")))
+                .thenReturn(null);
+        when(repository.existsByEmailHash(Hashing.sha256("alex@example.com"))).thenReturn(false);
+        when(repository.saveIdempotently(any(), any(), any()))
+                .thenReturn(InterestRepository.IdempotentSaveResult.CREATED);
+        String body = BODY.stripTrailing().substring(0, BODY.stripTrailing().length() - 1)
+                + ",\"followUpConsent\":true}";
+
+        APIGatewayV2HTTPResponse response = handler(repository, queue).handleRequest(
+                event(body, Map.of("content-type", "application/json")), null
+        );
+
+        assertEquals(201, response.getStatusCode());
+        ArgumentCaptor<Interest> saved = ArgumentCaptor.forClass(Interest.class);
+        verify(repository).saveIdempotently(saved.capture(), any(), any());
+        assertTrue(saved.getValue().followUpConsent());
+        assertEquals(FIXED_CLOCK.instant(), saved.getValue().followUpConsentedAt());
+        verify(queue).enqueue(saved.getValue().recordId(), FollowUpRecordType.INTEREST);
     }
 
     @Test
@@ -241,6 +275,11 @@ class InterestApiHandlerTest {
 
     private static InterestApiHandler handler(InterestRepository repository) {
         RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK);
+        return new InterestApiHandler(service);
+    }
+
+    private static InterestApiHandler handler(InterestRepository repository, FollowUpQueue queue) {
+        RegistrationService service = new RegistrationService(repository, Hashing::sha256, FIXED_CLOCK, queue);
         return new InterestApiHandler(service);
     }
 
