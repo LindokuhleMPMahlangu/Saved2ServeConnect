@@ -10,14 +10,32 @@ public record Engagement(
         boolean consent,
         EngagementType type,
         String message,
-        SubmissionStatus status
+        SubmissionStatus status,
+        String recordId,
+        boolean followUpConsent,
+        java.time.Instant followUpConsentedAt
 ) {
+    public Engagement(
+            String name,
+            String email,
+            String areaCode,
+            String phone,
+            boolean consent,
+            EngagementType type,
+            String message,
+            SubmissionStatus status
+    ) {
+        this(name, email, areaCode, phone, consent, type, message, status,
+                java.util.UUID.randomUUID().toString(), false, null);
+    }
+
     public Engagement {
         name = normalize(name);
         email = normalize(email);
         areaCode = normalize(areaCode);
         phone = normalize(phone);
         message = normalize(message);
+        recordId = normalize(recordId);
 
         EngagementInputLimits.requireWithinLimit(name, EngagementInputLimits.NAME_MAX_LENGTH, "Name");
         EngagementInputLimits.requireWithinLimit(email, EngagementInputLimits.EMAIL_MAX_LENGTH, "Email");
@@ -42,6 +60,12 @@ public record Engagement(
         }
         if (message.isBlank()) {
             throw new IllegalArgumentException("Engagement message is required.");
+        }
+        if (recordId.isBlank()) {
+            throw new IllegalArgumentException("recordId is required.");
+        }
+        if (followUpConsent != (followUpConsentedAt != null)) {
+            throw new IllegalArgumentException("Follow-up consent timestamp must match the consent choice.");
         }
         status = Objects.requireNonNullElse(status, SubmissionStatus.PENDING_REVIEW);
     }
