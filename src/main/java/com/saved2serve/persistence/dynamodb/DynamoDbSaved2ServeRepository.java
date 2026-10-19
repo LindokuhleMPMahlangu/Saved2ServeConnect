@@ -5,12 +5,15 @@ import com.saved2serve.domain.ChurchDirectoryStatus;
 import com.saved2serve.domain.DevotionLink;
 import com.saved2serve.domain.DevotionLinkStatus;
 import com.saved2serve.domain.Engagement;
+import com.saved2serve.domain.FollowUpRecordType;
 import com.saved2serve.domain.Interest;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.ChurchDirectoryRepository;
 import com.saved2serve.repository.DevotionLinkRepository;
 import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.repository.EngagementQueueEntry;
+import com.saved2serve.repository.FollowUpRecipient;
+import com.saved2serve.repository.FollowUpRepository;
 import com.saved2serve.repository.InterestRepository;
 import com.saved2serve.repository.Page;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -18,6 +21,7 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.Put;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.dynamodb.model.Select;
@@ -25,6 +29,7 @@ import software.amazon.awssdk.services.dynamodb.model.TransactWriteItem;
 import software.amazon.awssdk.services.dynamodb.model.TransactWriteItemsRequest;
 import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
 import software.amazon.awssdk.services.dynamodb.model.Update;
+import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 import software.amazon.awssdk.services.kms.KmsClient;
 
 import java.util.ArrayList;
@@ -35,7 +40,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 public final class DynamoDbSaved2ServeRepository
-        implements InterestRepository, EngagementRepository, ChurchDirectoryRepository, DevotionLinkRepository {
+        implements InterestRepository, EngagementRepository, FollowUpRepository,
+        ChurchDirectoryRepository, DevotionLinkRepository {
     public static final String STATUS_CREATED_AT_INDEX = "StatusCreatedAtIndex";
     public static final String AREA_CREATED_AT_INDEX = "AreaCreatedAtIndex";
     public static final String EMAIL_HASH_INDEX = "EmailHashIndex";
@@ -136,6 +142,76 @@ public final class DynamoDbSaved2ServeRepository
     }
 
     @Override
+    public FollowUpRecipient findRecipient(String recordId, FollowUpRecordType recordType) {
+        Map<String, AttributeValue> item = findFollowUpItem(recordId, recordType);
+        if (item == null) {
+            return null;
+        }
+        if (!recordType.name().equals(requiredAttribute(item, "entityType"))) {
+            return null;
+        }
+        return mapper.toFollowUpRecipient(item, recordType);
+    }
+
+    @Override
+    public boolean withdrawConsent(String recordId, FollowUpRecordType recordType) {
+        String normalizedId = requireNonBlank(recordId, "recordId");
+        Objects.requireNonNull(recordType, "recordType must not be null");
+        Map<String, AttributeValue> item = findFollowUpItem(normalizedId, recordType);
+        if (item == null || !recordType.name().equals(requiredAttribute(item, "entityType"))
+                || !optionalBoolean(item, "followUpConsent")) {
+            return false;
+        }
+        try {
+            dynamoDbClient.updateItem(UpdateItemRequest.builder()
+                    .tableName(tableName)
+                    .key(Map.of(
+                            DynamoDbRecordMapper.PK,
+                            requiredAttributeValue(item, DynamoDbRecordMapper.PK),
+                            DynamoDbRecordMapper.SK,
+                            requiredAttributeValue(item, DynamoDbRecordMapper.SK)
+                    ))
+                    .updateExpression("SET #consent = :withdrawn, #withdrawnAt = :withdrawnAt")
+                    .conditionExpression("#consent = :consented AND #entityType = :entityType")
+                    .expressionAttributeNames(Map.of(
+                            "#consent", "followUpConsent",
+                            "#withdrawnAt", "followUpWithdrawnAt",
+                            "#entityType", "entityType"
+                    ))
+                    .expressionAttributeValues(Map.of(
+                            ":withdrawn", DynamoDbRecordMapper.bool(false),
+                            ":consented", DynamoDbRecordMapper.bool(true),
+                            ":withdrawnAt", DynamoDbRecordMapper.string(Instant.now().toString()),
+                            ":entityType", DynamoDbRecordMapper.string(recordType.name())
+                    ))
+                    .build());
+            return true;
+        } catch (ConditionalCheckFailedException alreadyWithdrawn) {
+            return false;
+        }
+    }
+
+    private Map<String, AttributeValue> findFollowUpItem(String recordId, FollowUpRecordType recordType) {
+        String normalizedId = requireNonBlank(recordId, "recordId");
+        Objects.requireNonNull(recordType, "recordType must not be null");
+        QueryResponse response = dynamoDbClient.query(QueryRequest.builder()
+                .tableName(tableName)
+                .keyConditionExpression("#pk = :pk AND begins_with(#sk, :recordPrefix)")
+                .expressionAttributeNames(Map.of(
+                        "#pk", DynamoDbRecordMapper.PK,
+                        "#sk", DynamoDbRecordMapper.SK
+                ))
+                .expressionAttributeValues(Map.of(
+                        ":pk", DynamoDbRecordMapper.string("ENTITY#" + normalizedId),
+                        ":recordPrefix", DynamoDbRecordMapper.string("TYPE#" + recordType.name() + "#")
+                ))
+                .consistentRead(true)
+                .limit(1)
+                .build());
+        return response.items().isEmpty() ? null : response.items().getFirst();
+    }
+
+    @Override
     public String findRegistrationFingerprintByIdempotencyKey(String idempotencyKeyHash) {
         Map<String, AttributeValue> item = dynamoDbClient.getItem(GetItemRequest.builder()
                         .tableName(tableName)
@@ -162,17 +238,29 @@ public final class DynamoDbSaved2ServeRepository
         Objects.requireNonNull(interest, "interest must not be null");
         String normalizedIdempotencyKeyHash = requireNonBlank(idempotencyKeyHash, "idempotencyKeyHash");
         String normalizedRequestFingerprint = requireNonBlank(requestFingerprint, "requestFingerprint");
+        Map<String, AttributeValue> registrationItem = mapper.toItem(interest);
+        Map<String, AttributeValue> idempotencyItem = mapper.toIdempotentItem(
+                interest, normalizedIdempotencyKeyHash, normalizedRequestFingerprint
+        );
         try {
-            dynamoDbClient.putItem(PutItemRequest.builder()
-                    .tableName(tableName)
-                    .item(mapper.toIdempotentItem(
-                            interest, normalizedIdempotencyKeyHash, normalizedRequestFingerprint
-                    ))
-                    .conditionExpression("attribute_not_exists(#pk)")
-                    .expressionAttributeNames(Map.of("#pk", DynamoDbRecordMapper.PK))
+            dynamoDbClient.transactWriteItems(TransactWriteItemsRequest.builder()
+                    .transactItems(
+                            TransactWriteItem.builder().put(Put.builder()
+                                    .tableName(tableName)
+                                    .item(registrationItem)
+                                    .conditionExpression("attribute_not_exists(#pk)")
+                                    .expressionAttributeNames(Map.of("#pk", DynamoDbRecordMapper.PK))
+                                    .build()).build(),
+                            TransactWriteItem.builder().put(Put.builder()
+                                    .tableName(tableName)
+                                    .item(idempotencyItem)
+                                    .conditionExpression("attribute_not_exists(#pk)")
+                                    .expressionAttributeNames(Map.of("#pk", DynamoDbRecordMapper.PK))
+                                    .build()).build()
+                    )
                     .build());
             return IdempotentSaveResult.CREATED;
-        } catch (ConditionalCheckFailedException duplicateKey) {
+        } catch (TransactionCanceledException duplicateKey) {
             String existingFingerprint = findRegistrationFingerprintByIdempotencyKey(
                     normalizedIdempotencyKeyHash
             );
@@ -497,6 +585,11 @@ public final class DynamoDbSaved2ServeRepository
             throw new IllegalStateException("DynamoDB item is missing required key: " + name);
         }
         return value;
+    }
+
+    private static boolean optionalBoolean(Map<String, AttributeValue> item, String name) {
+        AttributeValue value = item.get(name);
+        return value != null && Boolean.TRUE.equals(value.bool());
     }
 
     private static String requiredAttribute(Map<String, AttributeValue> item, String name) {
