@@ -10,14 +10,31 @@ public record Interest(
         String phone,
         boolean consent,
         String source,
-        Instant consentedAt
+        Instant consentedAt,
+        String recordId,
+        boolean followUpConsent,
+        Instant followUpConsentedAt
 ) {
+    public Interest(
+            String name,
+            String email,
+            String areaCode,
+            String phone,
+            boolean consent,
+            String source,
+            Instant consentedAt
+    ) {
+        this(name, email, areaCode, phone, consent, source, consentedAt,
+                java.util.UUID.randomUUID().toString(), false, null);
+    }
+
     public Interest {
         name = normalize(name);
         email = normalize(email);
         areaCode = normalize(areaCode);
         phone = normalize(phone);
         source = normalize(source);
+        recordId = normalize(recordId);
         consentedAt = Objects.requireNonNull(consentedAt, "consentedAt must not be null");
 
         if (name.isBlank()) {
@@ -31,6 +48,12 @@ public record Interest(
         }
         if (!consent) {
             throw new IllegalArgumentException("Consent is required before an interest is accepted.");
+        }
+        if (recordId.isBlank()) {
+            throw new IllegalArgumentException("recordId is required.");
+        }
+        if (followUpConsent != (followUpConsentedAt != null)) {
+            throw new IllegalArgumentException("Follow-up consent timestamp must match the consent choice.");
         }
     }
 
