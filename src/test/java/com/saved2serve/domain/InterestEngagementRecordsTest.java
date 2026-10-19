@@ -31,6 +31,8 @@ class InterestEngagementRecordsTest {
         assertTrue(interest.consent());
         assertEquals("landing-page", interest.source());
         assertEquals(Instant.parse("2026-10-24T10:00:00Z"), interest.consentedAt());
+        assertFalse(interest.followUpConsent());
+        assertNull(interest.followUpConsentedAt());
 
         Set<String> names = Arrays.stream(Interest.class.getRecordComponents())
                 .map(component -> component.getName())
@@ -62,6 +64,8 @@ class InterestEngagementRecordsTest {
         assertEquals("20001", engagement.areaCode());
         assertEquals(EngagementType.HELP_REQUEST, engagement.type());
         assertEquals(SubmissionStatus.PENDING_REVIEW, engagement.status());
+        assertFalse(engagement.followUpConsent());
+        assertNull(engagement.followUpConsentedAt());
         assertFalse(containsField(Engagement.class, "fullAddress"));
         assertFalse(containsField(Engagement.class, "latitude"));
         assertFalse(containsField(Engagement.class, "longitude"));
@@ -69,7 +73,8 @@ class InterestEngagementRecordsTest {
 
     @Test
     void interestRequestUsesExplicitAllowlistOnly() {
-        assertEquals(Set.of("idempotencyKey", "name", "email", "areaCode", "phone", "consent", "source"),
+        assertEquals(Set.of("idempotencyKey", "name", "email", "areaCode", "phone", "consent", "source",
+                        "followUpConsent"),
                 InterestRequest.ALLOWED_FIELDS);
         assertFalse(InterestRequest.ALLOWED_FIELDS.contains("fullAddress"));
         assertFalse(InterestRequest.ALLOWED_FIELDS.contains("latitude"));
@@ -89,11 +94,13 @@ class InterestEngagementRecordsTest {
         assertEquals("registration-attempt-123", request.idempotencyKey());
         assertEquals("Morgan Lee", request.name());
         assertEquals("10001", request.areaCode());
+        assertFalse(request.followUpConsent());
     }
 
     @Test
     void engagementRequestUsesExplicitAllowlistOnly() {
-        assertEquals(Set.of("name", "email", "areaCode", "phone", "consent", "type", "message"), EngagementRequest.ALLOWED_FIELDS);
+        assertEquals(Set.of("name", "email", "areaCode", "phone", "consent", "type", "message",
+                        "followUpConsent"), EngagementRequest.ALLOWED_FIELDS);
         assertFalse(EngagementRequest.ALLOWED_FIELDS.contains("fullAddress"));
         assertFalse(EngagementRequest.ALLOWED_FIELDS.contains("latitude"));
         assertFalse(EngagementRequest.ALLOWED_FIELDS.contains("longitude"));
@@ -111,6 +118,7 @@ class InterestEngagementRecordsTest {
 
         assertEquals(EngagementType.HELP_REQUEST, request.type());
         assertEquals("I need prayer support for a new volunteer team.", request.message());
+        assertFalse(request.followUpConsent());
     }
 
     @Test
