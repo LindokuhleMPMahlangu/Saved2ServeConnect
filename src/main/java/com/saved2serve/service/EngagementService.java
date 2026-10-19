@@ -2,6 +2,7 @@ package com.saved2serve.service;
 
 import com.saved2serve.domain.Engagement;
 import com.saved2serve.domain.EngagementRequest;
+import com.saved2serve.domain.FollowUpRecordType;
 import com.saved2serve.domain.SubmissionStatus;
 import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.repository.EngagementQueueEntry;
@@ -10,6 +11,7 @@ import com.saved2serve.validation.Saved2ServeValidator;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.UUID;
 import java.util.Objects;
 
 public final class EngagementService {
@@ -17,16 +19,26 @@ public final class EngagementService {
 
     private final EngagementRepository engagementRepository;
     private final Clock clock;
+    private final FollowUpQueue followUpQueue;
 
     public EngagementService(EngagementRepository engagementRepository) {
         this(engagementRepository, Clock.systemUTC());
     }
 
     public EngagementService(EngagementRepository engagementRepository, Clock clock) {
+        this(engagementRepository, clock, null);
+    }
+
+    public EngagementService(
+            EngagementRepository engagementRepository,
+            Clock clock,
+            FollowUpQueue followUpQueue
+    ) {
         this.engagementRepository = Objects.requireNonNull(
                 engagementRepository, "engagementRepository must not be null"
         );
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this.followUpQueue = followUpQueue;
     }
 
     public Saved2ServeValidator.ValidationResult submit(EngagementRequest request) {
@@ -45,6 +57,7 @@ public final class EngagementService {
             return validation;
         }
 
+        Instant submittedAt = clock.instant();
         Engagement engagement = new Engagement(
                 request.name(),
                 request.email(),
@@ -53,10 +66,19 @@ public final class EngagementService {
                 request.consent(),
                 request.type(),
                 request.message(),
-                SubmissionStatus.PENDING_REVIEW
+                SubmissionStatus.PENDING_REVIEW,
+                UUID.randomUUID().toString(),
+                request.followUpConsent(),
+                request.followUpConsent() ? submittedAt : null
         );
         try {
             engagementRepository.save(engagement);
+            if (engagement.followUpConsent()) {
+                if (followUpQueue == null) {
+                    throw new IllegalStateException("Follow-up queue is not configured.");
+                }
+                followUpQueue.enqueue(engagement.recordId(), FollowUpRecordType.ENGAGEMENT);
+            }
         } catch (RuntimeException failure) {
             throw new EngagementPersistenceException(failure);
         }
