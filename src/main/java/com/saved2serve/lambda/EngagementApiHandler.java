@@ -13,10 +13,12 @@ import com.saved2serve.domain.EngagementRequest;
 import com.saved2serve.domain.EngagementType;
 import com.saved2serve.persistence.dynamodb.DynamoDbSaved2ServeRepository;
 import com.saved2serve.service.EngagementService;
+import com.saved2serve.service.SqsFollowUpQueue;
 import com.saved2serve.validation.Saved2ServeValidator;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.kms.KmsClient;
+import software.amazon.awssdk.services.sqs.SqsClient;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -48,10 +50,15 @@ public final class EngagementApiHandler
         String kmsKeyId = requiredEnvironmentVariable("SAVED2SERVE_KMS_KEY_ID");
         DynamoDbClient dynamoDbClient = DynamoDbClient.builder().build();
         KmsClient kmsClient = KmsClient.builder().build();
+        SqsClient sqsClient = SqsClient.builder().build();
         DynamoDbSaved2ServeRepository repository = new DynamoDbSaved2ServeRepository(
                 dynamoDbClient, kmsClient, tableName, kmsKeyId
         );
-        this.engagementService = new EngagementService(repository);
+        this.engagementService = new EngagementService(
+                repository,
+                java.time.Clock.systemUTC(),
+                new SqsFollowUpQueue(sqsClient, requiredEnvironmentVariable("SAVED2SERVE_FOLLOW_UP_QUEUE_URL"))
+        );
     }
 
     public EngagementApiHandler(EngagementService engagementService) {
@@ -145,7 +152,8 @@ public final class EngagementApiHandler
                 stringField(root, "phone", false),
                 booleanField(root, "consent"),
                 engagementType(root),
-                stringField(root, "message", true)
+                stringField(root, "message", true),
+                optionalBooleanField(root, "followUpConsent")
         );
     }
 
@@ -163,6 +171,17 @@ public final class EngagementApiHandler
     private static boolean booleanField(JsonNode root, String name) {
         JsonNode value = root.get(name);
         if (value == null || !value.isBoolean()) {
+            throw new IllegalArgumentException("Field '" + name + "' must be a boolean.");
+        }
+        return value.booleanValue();
+    }
+
+    private static boolean optionalBooleanField(JsonNode root, String name) {
+        JsonNode value = root.get(name);
+        if (value == null) {
+            return false;
+        }
+        if (!value.isBoolean()) {
             throw new IllegalArgumentException("Field '" + name + "' must be a boolean.");
         }
         return value.booleanValue();
