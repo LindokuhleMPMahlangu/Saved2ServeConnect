@@ -1,4 +1,7 @@
 const API_PATH = "/v1/interests";
+const CHURCHES_PATH = "/v1/churches";
+const DEVOTIONS_PATH = "/v1/devotions";
+const APPROVED_VIDEO_HOSTS = new Set(["youtube.com", "www.youtube.com", "youtu.be", "www.youtu.be"]);
 
 export function validateInterestInput({ name, email, areaCode, consent }) {
   if (!name?.trim()) {
@@ -74,6 +77,125 @@ export class RegistrationError extends Error {
     super(message);
     this.name = "RegistrationError";
     this.status = status;
+  }
+}
+
+export function projectPublicChurches(responseBody) {
+  if (!responseBody || !Array.isArray(responseBody.churches)) {
+    throw new Error("Church directory response is invalid.");
+  }
+  return responseBody.churches
+    .filter((church) => church && typeof church === "object"
+      && (!("status" in church) || church.status === "APPROVED")
+      && typeof church.churchId === "string"
+      && typeof church.displayName === "string"
+      && church.churchId.trim()
+      && church.displayName.trim())
+    .map((church) => ({
+      churchId: church.churchId.trim(),
+      displayName: church.displayName.trim(),
+      publicWebsite: safeHttpsUrl(church.publicWebsite),
+      publicAddress: typeof church.publicAddress === "string" ? church.publicAddress.trim() : ""
+    }));
+}
+
+export function projectPublishedDevotions(responseBody) {
+  if (!responseBody || !Array.isArray(responseBody.devotions)) {
+    throw new Error("Devotion response is invalid.");
+  }
+  return responseBody.devotions
+    .filter((devotion) => devotion && typeof devotion === "object"
+      && (!("status" in devotion) || devotion.status === "APPROVED")
+      && typeof devotion.devotionId === "string"
+      && typeof devotion.title === "string"
+      && typeof devotion.url === "string"
+      && typeof devotion.platform === "string"
+      && devotion.devotionId.trim()
+      && devotion.title.trim()
+      && devotion.platform === "YOUTUBE"
+      && isApprovedVideoUrl(devotion.url))
+    .map((devotion) => ({
+      devotionId: devotion.devotionId.trim(),
+      title: devotion.title.trim(),
+      url: new URL(devotion.url).href,
+      platform: "YOUTUBE"
+    }));
+}
+
+export function isApprovedVideoUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      && APPROVED_VIDEO_HOSTS.has(url.hostname.toLowerCase())
+      && !url.username
+      && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchChurches(areaCode, {
+  apiBaseUrl = "",
+  path = CHURCHES_PATH,
+  fetchImpl = globalThis.fetch
+} = {}) {
+  if (typeof fetchImpl !== "function") {
+    throw new Error("Church directory is unavailable.");
+  }
+  const query = new URLSearchParams({ areaCode: areaCode.trim() });
+  const response = await fetchImpl(`${normalizeApiBase(apiBaseUrl)}${path}?${query}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    credentials: "omit",
+    referrerPolicy: "no-referrer"
+  });
+  if (!response.ok) {
+    throw new DiscoveryError(response.status);
+  }
+  return projectPublicChurches(await response.json());
+}
+
+export async function fetchDevotions({
+  apiBaseUrl = "",
+  path = DEVOTIONS_PATH,
+  fetchImpl = globalThis.fetch
+} = {}) {
+  if (typeof fetchImpl !== "function") {
+    throw new Error("Devotions are unavailable.");
+  }
+  const response = await fetchImpl(`${normalizeApiBase(apiBaseUrl)}${path}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    credentials: "omit",
+    referrerPolicy: "no-referrer"
+  });
+  if (!response.ok) {
+    throw new DiscoveryError(response.status);
+  }
+  return projectPublishedDevotions(await response.json());
+}
+
+export class DiscoveryError extends Error {
+  constructor(status) {
+    super("Discovery content could not be loaded.");
+    this.name = "DiscoveryError";
+    this.status = status;
+  }
+}
+
+function normalizeApiBase(value) {
+  return value.trim().replace(/\/+$/, "");
+}
+
+function safeHttpsUrl(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return "";
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : "";
+  } catch {
+    return "";
   }
 }
 
@@ -192,6 +314,163 @@ function showStatus(element, type, message) {
   element.focus();
 }
 
+function setDiscoveryState(container, state, message) {
+  container.replaceChildren();
+  container.className = `discovery-results discovery-${state}`;
+  container.setAttribute("aria-busy", state === "loading" ? "true" : "false");
+  const text = document.createElement("p");
+  text.className = "discovery-placeholder";
+  text.textContent = message;
+  container.append(text);
+}
+
+function appendRetry(container, onRetry) {
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "text-button";
+  retry.textContent = "Try again";
+  retry.addEventListener("click", onRetry);
+  container.append(retry);
+}
+
+function renderChurches(container, churches) {
+  container.replaceChildren();
+  container.className = `discovery-results ${churches.length ? "discovery-loaded" : "discovery-empty"}`;
+  container.setAttribute("aria-busy", "false");
+  if (churches.length === 0) {
+    setDiscoveryState(container, "empty", "No approved churches are listed for that exact area yet.");
+    return;
+  }
+  const cards = document.createElement("div");
+  cards.className = "church-cards";
+  for (const church of churches) {
+    const card = document.createElement("article");
+    card.className = "church-card";
+    const name = document.createElement("h3");
+    name.textContent = church.displayName;
+    card.append(name);
+    if (church.publicAddress) {
+      const address = document.createElement("p");
+      address.className = "church-address";
+      address.textContent = church.publicAddress;
+      card.append(address);
+    }
+    if (church.publicWebsite) {
+      const website = document.createElement("a");
+      website.href = church.publicWebsite;
+      website.target = "_blank";
+      website.rel = "noopener noreferrer";
+      website.textContent = "Visit website";
+      website.setAttribute("aria-label", `Visit ${church.displayName} website (opens in a new tab)`);
+      card.append(website);
+    }
+    cards.append(card);
+  }
+  container.append(cards);
+}
+
+function renderDevotions(container, devotions) {
+  container.replaceChildren();
+  container.className = `devotion-results ${devotions.length ? "discovery-loaded" : "discovery-empty"}`;
+  container.setAttribute("aria-busy", "false");
+  if (devotions.length === 0) {
+    setDiscoveryState(container, "empty", "There are no published devotion links to show just yet.");
+    return;
+  }
+  const cards = document.createElement("div");
+  cards.className = "devotion-cards";
+  for (const devotion of devotions) {
+    const card = document.createElement("article");
+    card.className = "devotion-card";
+    const label = document.createElement("span");
+    label.className = "devotion-label";
+    label.textContent = "WEEKLY DEVOTION";
+    const title = document.createElement("h3");
+    title.textContent = devotion.title;
+    const link = document.createElement("a");
+    link.href = devotion.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Watch on YouTube";
+    link.setAttribute("aria-label", `${devotion.title} (opens in a new tab)`);
+    card.append(label, title, link);
+    cards.append(card);
+  }
+  container.append(cards);
+}
+
+function initializeChurchDiscovery() {
+  const form = document.querySelector("#church-search");
+  const input = document.querySelector("#church-area");
+  const error = document.querySelector("#church-area-error");
+  const results = document.querySelector("#church-results");
+  if (!form || !input || !results) {
+    return;
+  }
+  let activeController = null;
+  const search = async (areaCode) => {
+    if (activeController) {
+      activeController.abort();
+    }
+    activeController = new AbortController();
+    setDiscoveryState(results, "loading", "Searching approved service-area results…");
+    try {
+      const churches = await fetchChurches(areaCode, {
+        apiBaseUrl: globalThis.SAVED2SERVE_CONFIG?.apiBaseUrl ?? "",
+        path: globalThis.SAVED2SERVE_CONFIG?.churchesPath ?? CHURCHES_PATH,
+        fetchImpl: (url, options) => fetch(url, { ...options, signal: activeController.signal })
+      });
+      renderChurches(results, churches);
+    } catch (failure) {
+      if (failure.name === "AbortError") {
+        return;
+      }
+      setDiscoveryState(results, "error", "Church results are temporarily unavailable. Please try again.");
+      appendRetry(results, () => search(areaCode));
+    }
+  };
+  input.addEventListener("input", () => {
+    input.setAttribute("aria-invalid", "false");
+    error.textContent = "";
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const areaCode = input.value.trim();
+    if (!areaCode) {
+      input.setAttribute("aria-invalid", "true");
+      error.textContent = "Enter an area or postcode to search.";
+      input.focus();
+      return;
+    }
+    input.setAttribute("aria-invalid", "false");
+    error.textContent = "";
+    search(areaCode);
+  });
+}
+
+async function initializeDevotionDiscovery() {
+  const results = document.querySelector("#devotion-results");
+  if (!results) {
+    return;
+  }
+  const load = async () => {
+    setDiscoveryState(results, "loading", "Loading published devotions…");
+    try {
+      const devotions = await fetchDevotions({
+        apiBaseUrl: globalThis.SAVED2SERVE_CONFIG?.apiBaseUrl ?? "",
+        path: globalThis.SAVED2SERVE_CONFIG?.devotionsPath ?? DEVOTIONS_PATH
+      });
+      renderDevotions(results, devotions);
+    } catch {
+      setDiscoveryState(results, "error", "Weekly devotions are temporarily unavailable. Please try again.");
+      appendRetry(results, load);
+    }
+  };
+  await load();
+}
+
 if (typeof document !== "undefined") {
   initializeInterestForm();
+  initializeChurchDiscovery();
+  initializeDevotionDiscovery();
 }
