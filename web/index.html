@@ -23,6 +23,8 @@
       <span class="brand-name">save<span>2</span>serve</span>
     </a>
     <nav class="header-nav" aria-label="Main navigation">
+      <a href="#discover-churches">Churches</a>
+      <a href="#weekly-devotions">Devotions</a>
       <a href="#how-it-works">How it works</a>
       <a class="nav-cta" href="#interest-form">Get connected <span aria-hidden="true">↗</span></a>
     </nav>
@@ -53,6 +55,42 @@
       <div><span class="promise-icon" aria-hidden="true">⌖</span><span>Local, area-based connections</span></div>
       <div><span class="promise-icon" aria-hidden="true">♡</span><span>Your choice comes first</span></div>
       <div><span class="promise-icon" aria-hidden="true">✳</span><span>Made with care and respect</span></div>
+    </section>
+
+    <section class="discovery-section church-discovery" id="discover-churches" aria-labelledby="church-title">
+      <div class="discovery-heading">
+        <div>
+          <p class="eyebrow">COMMUNITY, CLOSE TO HOME</p>
+          <h2 id="church-title">Find a church in your area.</h2>
+          <p>Search the exact postcode or area code you have in mind. We only show approved service-area matches.</p>
+        </div>
+        <form id="church-search" class="discovery-search" novalidate>
+          <label for="church-area">Area or postcode</label>
+          <div class="search-control">
+            <input id="church-area" name="areaCode" autocomplete="postal-code" maxlength="24"
+                   aria-describedby="church-area-help church-area-error" required>
+            <button type="submit" class="button search-button">Search <span aria-hidden="true">→</span></button>
+          </div>
+          <span class="field-help" id="church-area-help">Exact match only; nearby areas aren't inferred.</span>
+          <span class="field-error" id="church-area-error"></span>
+        </form>
+      </div>
+      <div id="church-results" class="discovery-results" role="status" aria-live="polite" aria-busy="false">
+        <p class="discovery-placeholder">Enter an area or postcode to see approved local results.</p>
+      </div>
+    </section>
+
+    <section class="discovery-section devotion-discovery" id="weekly-devotions" aria-labelledby="devotion-title">
+      <div class="discovery-heading devotion-heading">
+        <div>
+          <p class="eyebrow">A MOMENT FOR YOUR WEEK</p>
+          <h2 id="devotion-title">Weekly words to reflect on.</h2>
+          <p>Explore published devotion links shared by the Save2Serve team.</p>
+        </div>
+      </div>
+      <div id="devotion-results" class="devotion-results" role="status" aria-live="polite" aria-busy="true">
+        <p class="discovery-placeholder">Loading published devotions…</p>
+      </div>
     </section>
 
     <section class="how-section" id="how-it-works" aria-labelledby="how-title">
