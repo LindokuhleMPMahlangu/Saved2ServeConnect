@@ -89,6 +89,10 @@ Interest and engagement submissions accept a separate optional `followUpConsent`
 
 The responsive static landing page and interest form are in `web/`. The form collects only name, email, and area/postcode as required values; phone and follow-up email permission are optional. It submits to `POST /v1/interests`, displays safe success/error outcomes, and avoids persisting or logging form values. Configure the HTTPS API base URL in `web/config.js`; the site and API must be hosted with appropriate CORS. See [docs/day-13-public-landing-and-interest-form.md](docs/day-13-public-landing-and-interest-form.md) for privacy, deployment setup, accessibility notes, and test instructions. AWS hosting and API configuration are not provisioned here.
 
+## Day 14 deliverables included
+
+The public site includes exact area/postcode church discovery using `GET /v1/churches?areaCode=...` and published devotion discovery using `GET /v1/devotions`. Church rendering is limited to approved public directory fields, and devotion rendering accepts only approved YouTube HTTPS links; review metadata and unapproved content are excluded. Both flows provide loading, empty, and generic retryable error states with responsive layouts. See [docs/day-14-discovery-pages.md](docs/day-14-discovery-pages.md) for contracts and verification evidence. AWS hosting and CORS configuration remain deployment tasks.
+
 ## Java and dependency baseline
 
 - Java 21
@@ -179,5 +183,6 @@ Additional supporting materials are available in the docs folder:
 - day-11-leader-engagement-review.md
 - day-12-opt-in-follow-up-notifications.md
 - day-13-public-landing-and-interest-form.md
+- day-14-discovery-pages.md
 
 The architecture document is intentionally kept separate from this README.
