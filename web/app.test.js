@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildInterestPayload,
+  fetchChurches,
+  fetchDevotions,
   getRegistrationMessage,
+  isApprovedVideoUrl,
+  projectPublicChurches,
+  projectPublishedDevotions,
   RegistrationError,
   submitInterest,
   validateInterestInput
@@ -80,4 +85,95 @@ test("uses safe retry messages for API failures and network errors", async () =>
     TypeError
   );
   assert.match(getRegistrationMessage(503), /try again shortly/);
+});
+
+test("church lookup preserves the exact area code and projects only public fields", async () => {
+  let request;
+  const churches = await fetchChurches(" 00180 ", {
+    apiBaseUrl: "https://api.example.org/",
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return {
+        ok: true,
+        json: async () => ({
+          churches: [{
+            churchId: "church-1",
+            displayName: "Community Church",
+            publicWebsite: "https://church.example.org",
+            publicAddress: "Approved public venue",
+            status: "APPROVED",
+            sourceReference: "internal-only",
+            reviewerId: "reviewer-only"
+          }]
+        })
+      };
+    }
+  });
+  assert.equal(request.url, "https://api.example.org/v1/churches?areaCode=00180");
+  assert.equal(request.options.method, "GET");
+  assert.equal(request.options.credentials, "omit");
+  assert.deepEqual(churches, [{
+    churchId: "church-1",
+    displayName: "Community Church",
+    publicWebsite: "https://church.example.org/",
+    publicAddress: "Approved public venue"
+  }]);
+  assert.equal("sourceReference" in churches[0], false);
+  assert.equal("reviewerId" in churches[0], false);
+});
+
+test("church projection excludes pending content and unsafe website URLs", () => {
+  const churches = projectPublicChurches({
+    churches: [
+      { churchId: "approved", displayName: "Approved", status: "APPROVED", publicWebsite: "javascript:alert(1)" },
+      { churchId: "pending", displayName: "Pending", status: "PENDING_REVIEW" },
+      { churchId: "", displayName: "Missing identity" }
+    ]
+  });
+  assert.deepEqual(churches, [{
+    churchId: "approved",
+    displayName: "Approved",
+    publicWebsite: "",
+    publicAddress: ""
+  }]);
+});
+
+test("devotion discovery shows only approved public YouTube links", async () => {
+  let url;
+  const devotions = await fetchDevotions({
+    apiBaseUrl: "https://api.example.org",
+    fetchImpl: async (requestUrl) => {
+      url = requestUrl;
+      return {
+        ok: true,
+        json: async () => ({
+          devotions: [
+            { devotionId: "d-1", title: "A quiet beginning", url: "https://youtu.be/abc", platform: "YOUTUBE" },
+            { devotionId: "d-2", title: "Pending", url: "https://youtube.com/watch?v=def", platform: "YOUTUBE", status: "PENDING_REVIEW" },
+            { devotionId: "d-3", title: "Unsafe", url: "https://example.org/video", platform: "OTHER" }
+          ]
+        })
+      };
+    }
+  });
+  assert.equal(url, "https://api.example.org/v1/devotions");
+  assert.deepEqual(devotions, [{
+    devotionId: "d-1",
+    title: "A quiet beginning",
+    url: "https://youtu.be/abc",
+    platform: "YOUTUBE"
+  }]);
+  assert.equal(isApprovedVideoUrl("https://www.youtube.com/watch?v=abc"), true);
+  assert.equal(isApprovedVideoUrl("http://youtube.com/watch?v=abc"), false);
+  assert.equal(isApprovedVideoUrl("https://youtube.com.example.net/watch?v=abc"), false);
+  assert.throws(() => projectPublishedDevotions({ results: [] }), /response is invalid/);
+});
+
+test("discovery HTTP failures return generic errors without response body details", async () => {
+  await assert.rejects(
+    fetchDevotions({ fetchImpl: async () => ({ ok: false, status: 503 }) }),
+    (error) => error.name === "DiscoveryError"
+      && error.status === 503
+      && !error.message.includes("503")
+  );
 });
