@@ -1,3 +1,5 @@
 window.SAVED2SERVE_CONFIG = Object.freeze({
-  apiBaseUrl: ""
+  apiBaseUrl: "",
+  churchesPath: "/v1/churches",
+  devotionsPath: "/v1/devotions"
 });
