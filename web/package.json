@@ -1,0 +1,11 @@
+{
+  "name": "saved2serve-public-site",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
