@@ -85,6 +85,10 @@ Leader engagement review is implemented in `LeaderEngagementApiHandler`: `GET /v
 
 Interest and engagement submissions accept a separate optional `followUpConsent` choice, defaulting to false and recorded with a server timestamp. Only opted-in records are queued to SQS; messages contain only record IDs and record types. The worker rechecks current consent before SES delivery, uses generic email content, and returns per-message retry failures. Withdrawal uses a signed token and a confirmation-page POST, so link-scanner GET requests cannot revoke consent. See [docs/day-12-opt-in-follow-up-notifications.md](docs/day-12-opt-in-follow-up-notifications.md) for the request flow, required environment variables, least-privilege AWS configuration, retry caveats, and test command. AWS resources are not provisioned or deployed by this change.
 
+## Day 13 deliverables included
+
+The responsive static landing page and interest form are in `web/`. The form collects only name, email, and area/postcode as required values; phone and follow-up email permission are optional. It submits to `POST /v1/interests`, displays safe success/error outcomes, and avoids persisting or logging form values. Configure the HTTPS API base URL in `web/config.js`; the site and API must be hosted with appropriate CORS. See [docs/day-13-public-landing-and-interest-form.md](docs/day-13-public-landing-and-interest-form.md) for privacy, deployment setup, accessibility notes, and test instructions. AWS hosting and API configuration are not provisioned here.
+
 ## Java and dependency baseline
 
 - Java 21
@@ -174,5 +178,6 @@ Additional supporting materials are available in the docs folder:
 - day-10-cognito-jwt-authorizer.md
 - day-11-leader-engagement-review.md
 - day-12-opt-in-follow-up-notifications.md
+- day-13-public-landing-and-interest-form.md
 
 The architecture document is intentionally kept separate from this README.
