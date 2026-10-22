@@ -93,6 +93,10 @@ The responsive static landing page and interest form are in `web/`. The form col
 
 The public site includes exact area/postcode church discovery using `GET /v1/churches?areaCode=...` and published devotion discovery using `GET /v1/devotions`. Church rendering is limited to approved public directory fields, and devotion rendering accepts only approved YouTube HTTPS links; review metadata and unapproved content are excluded. Both flows provide loading, empty, and generic retryable error states with responsive layouts. See [docs/day-14-discovery-pages.md](docs/day-14-discovery-pages.md) for contracts and verification evidence. AWS hosting and CORS configuration remain deployment tasks.
 
+## Day 15 deliverables included
+
+The private leader portal is in `web/leader.html`. It uses Cognito authorization-code sign-in with PKCE, keeps the access token in memory only, and calls the protected engagement queue/review API with the required bearer token. Leaders can filter and paginate the queue, inspect private submissions, and request approve/reject transitions; the API remains authoritative for group/scope authorization and transition validation. See [docs/day-15-leader-portal.md](docs/day-15-leader-portal.md) for Cognito/API setup, session behavior, and test evidence. Cognito, API Gateway, and AWS hosting are not configured or deployed by this change.
+
 ## Java and dependency baseline
 
 - Java 21
@@ -184,5 +188,6 @@ Additional supporting materials are available in the docs folder:
 - day-12-opt-in-follow-up-notifications.md
 - day-13-public-landing-and-interest-form.md
 - day-14-discovery-pages.md
+- day-15-leader-portal.md
 
 The architecture document is intentionally kept separate from this README.
