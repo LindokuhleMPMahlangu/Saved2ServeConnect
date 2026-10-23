@@ -8,6 +8,7 @@
   <title>Save2Serve — find support close to home</title>
   <link rel="stylesheet" href="./styles.css">
   <script src="./config.js"></script>
+  <script src="./qrcode.js"></script>
   <script type="module" src="./app.js"></script>
 </head>
 <body>
@@ -180,6 +181,23 @@
         <p class="form-footnote">By submitting, you agree to the required registration consent above. Optional follow-up is a separate choice.</p>
         <div class="form-status" id="form-status" role="status" aria-live="polite" tabindex="-1" hidden></div>
       </form>
+    </section>
+
+    <section class="campaign-share" aria-labelledby="campaign-share-title">
+      <div class="campaign-share-copy">
+        <p class="eyebrow">SHARE A STARTING POINT</p>
+        <h2 id="campaign-share-title">Help someone find their next step.</h2>
+        <p>This campaign QR code opens the public interest form. Share it with your community, and people can choose whether to register.</p>
+        <p class="campaign-destination-label">QR destination</p>
+        <p class="campaign-destination" id="campaign-qr-destination"></p>
+        <a class="button button-primary" id="campaign-qr-download" download="save2serve-community-outreach.svg">
+          Download campaign QR <span aria-hidden="true">↓</span>
+        </a>
+        <p class="campaign-qr-error" id="campaign-qr-error" role="status" hidden></p>
+      </div>
+      <div class="campaign-qr-card">
+        <img id="campaign-qr" alt="QR code for the Save2Serve community outreach interest form">
+      </div>
     </section>
   </main>
 

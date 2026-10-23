@@ -7,5 +7,8 @@
   },
   "scripts": {
     "test": "node --test"
+  },
+  "devDependencies": {
+    "qrcode-generator": "^2.0.4"
   }
 }
