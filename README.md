@@ -97,6 +97,10 @@ The public site includes exact area/postcode church discovery using `GET /v1/chu
 
 The private leader portal is in `web/leader.html`. It uses Cognito authorization-code sign-in with PKCE, keeps the access token in memory only, and calls the protected engagement queue/review API with the required bearer token. Leaders can filter and paginate the queue, inspect private submissions, and request approve/reject transitions; the API remains authoritative for group/scope authorization and transition validation. See [docs/day-15-leader-portal.md](docs/day-15-leader-portal.md) for Cognito/API setup, session behavior, and test evidence. Cognito, API Gateway, and AWS hosting are not configured or deployed by this change.
 
+## Day 16 deliverables included
+
+The public page generates a self-hosted, downloadable campaign QR code for its current deployed URL, opening the interest form with the allowlisted `community-outreach` campaign identifier. The form records attribution in the existing `source` field as `campaign-qr:community-outreach`; the API allows only defined source values and adds no new personal-data fields. The campaign value is the only query parameter placed in the QR destination. See [docs/day-16-campaign-qr-attribution.md](docs/day-16-campaign-qr-attribution.md) for the attribution contract, privacy boundaries, QR behavior, and tests.
+
 ## Java and dependency baseline
 
 - Java 21
