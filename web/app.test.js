@@ -1,9 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import qrcode from "qrcode-generator";
 import {
+  buildCampaignLandingUrl,
   buildInterestPayload,
+  CAMPAIGN_ID,
+  createCampaignQrDataUrl,
   fetchChurches,
   fetchDevotions,
+  getCampaignId,
   getRegistrationMessage,
   isApprovedVideoUrl,
   projectPublicChurches,
@@ -51,6 +56,47 @@ test("creates only allowlisted form fields and keeps follow-up consent separate"
   const withPhone = buildInterestPayload({ ...validValues, phone: "5550100100", followUpConsent: true }, "retry");
   assert.equal(withPhone.phone, "5550100100");
   assert.equal(withPhone.followUpConsent, true);
+});
+
+test("captures only the allowlisted campaign identifier in the existing source field", () => {
+  assert.equal(getCampaignId("?campaign=community-outreach"), CAMPAIGN_ID);
+  assert.equal(getCampaignId("?campaign=unknown-campaign"), "");
+  assert.equal(getCampaignId("?campaign=community-outreach&campaign=unknown-campaign"), "");
+  assert.equal(getCampaignId("?campaign=person%40example.org"), "");
+
+  const payload = buildInterestPayload(validValues, "attempt-id", CAMPAIGN_ID);
+  assert.equal(payload.source, "campaign-qr:community-outreach");
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "areaCode",
+    "consent",
+    "email",
+    "followUpConsent",
+    "idempotencyKey",
+    "name",
+    "source"
+  ]);
+  assert.equal(buildInterestPayload(validValues, "attempt-id", "unexpected").source, "landing-page");
+});
+
+test("campaign QR targets the public interest form without forwarding other query data", () => {
+  const destination = buildCampaignLandingUrl(
+    "https://saved2serve.example/community/?email=private%40example.org#top"
+  );
+  assert.equal(
+    destination,
+    "https://saved2serve.example/community/?campaign=community-outreach#interest-form"
+  );
+  assert.throws(() => buildCampaignLandingUrl("file:///tmp/index.html"), /public HTTP or HTTPS page/);
+  assert.throws(() => buildCampaignLandingUrl("https://saved2serve.example", "unapproved"), /invalid/);
+
+  const dataUrl = createCampaignQrDataUrl(destination, qrcode);
+  assert.match(dataUrl, /^data:image\/svg\+xml;charset=utf-8,/);
+  const svg = decodeURIComponent(dataUrl.split(",", 2)[1]);
+  const expectedQr = qrcode(0, "M");
+  expectedQr.addData(destination);
+  expectedQr.make();
+  assert.equal(svg, expectedQr.createSvgTag(5, 4));
+  assert.ok(expectedQr.getModuleCount() > 21);
 });
 
 test("posts JSON to the configured API without credentials or referrer", async () => {
