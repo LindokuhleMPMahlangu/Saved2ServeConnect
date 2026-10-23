@@ -7,6 +7,7 @@
 .vscode/
 *.iml
 *.class
+**/node_modules/
 
 # OS files
 .DS_Store
