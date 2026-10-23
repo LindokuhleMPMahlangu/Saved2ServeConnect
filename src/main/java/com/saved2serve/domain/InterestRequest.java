@@ -13,6 +13,12 @@ public record InterestRequest(
         String source,
         boolean followUpConsent
 ) {
+    private static final Set<String> ALLOWED_SOURCES = Set.of(
+            "",
+            "landing-page",
+            "qr-code",
+            "campaign-qr:community-outreach"
+    );
     public static final Set<String> ALLOWED_FIELDS = Set.of(
             "idempotencyKey",
             "name",
@@ -55,6 +61,9 @@ public record InterestRequest(
         }
         if (areaCode.isBlank()) {
             throw new IllegalArgumentException("Area code is required.");
+        }
+        if (!ALLOWED_SOURCES.contains(source)) {
+            throw new IllegalArgumentException("Source is invalid.");
         }
         if (!consent) {
             throw new IllegalArgumentException("Consent is required before an interest request is accepted.");
