@@ -38,6 +38,17 @@ The repository now includes immutable privacy-conscious domain records and expli
 
 These records intentionally reject full residential addresses, precise coordinates, and non-consented submissions to stay within the Save2Serve MVP boundaries.
 
+## Day 04 deliverables included
+
+This repository now includes the DynamoDB design notes for the Save2Serve MVP access patterns:
+
+- single-table layout for interests and engagement records
+- primary keys, GSI definitions, and review-queue access patterns
+- area-code-based lookup strategy and email-hash duplicate detection
+- privacy-preserving design decisions that avoid full address and GPS storage
+
+The complete write-up is in docs/day-04-dynamodb-keys-indexes-and-access-patterns.md and stays aligned with the privacy-first MVP boundaries.
+
 ## Java and dependency baseline
 
 - Java 21
@@ -119,5 +130,6 @@ Additional supporting materials are available in the docs folder:
 - privacy-retention-threat-release.md
 - acceptance-scenarios.md
 - architecture.md
+- day-04-dynamodb-keys-indexes-and-access-patterns.md
 
 The architecture document is intentionally kept separate from this README.
