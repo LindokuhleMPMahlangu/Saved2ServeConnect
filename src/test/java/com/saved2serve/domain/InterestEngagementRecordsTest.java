@@ -95,6 +95,25 @@ class InterestEngagementRecordsTest {
         assertEquals("Morgan Lee", request.name());
         assertEquals("10001", request.areaCode());
         assertFalse(request.followUpConsent());
+
+        assertDoesNotThrow(() -> new InterestRequest(
+                "campaign-attempt-456",
+                "Morgan Lee",
+                "morgan@example.com",
+                "10001",
+                "",
+                true,
+                "campaign-qr:community-outreach"
+        ));
+        assertThrows(IllegalArgumentException.class, () -> new InterestRequest(
+                "invalid-source-attempt",
+                "Morgan Lee",
+                "morgan@example.com",
+                "10001",
+                "",
+                true,
+                "morgan@example.com"
+        ));
     }
 
     @Test
