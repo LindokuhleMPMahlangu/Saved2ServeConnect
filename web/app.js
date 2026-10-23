@@ -2,6 +2,9 @@ const API_PATH = "/v1/interests";
 const CHURCHES_PATH = "/v1/churches";
 const DEVOTIONS_PATH = "/v1/devotions";
 const APPROVED_VIDEO_HOSTS = new Set(["youtube.com", "www.youtube.com", "youtu.be", "www.youtu.be"]);
+export const CAMPAIGN_ID = "community-outreach";
+const CAMPAIGN_SOURCE_PREFIX = "campaign-qr:";
+const CAMPAIGN_SOURCE_KEY = "campaign";
 
 export function validateInterestInput({ name, email, areaCode, consent }) {
   if (!name?.trim()) {
@@ -19,14 +22,46 @@ export function validateInterestInput({ name, email, areaCode, consent }) {
   return "";
 }
 
-export function buildInterestPayload(values, idempotencyKey) {
+export function getCampaignId(search = "") {
+  const campaignIds = new URLSearchParams(search).getAll(CAMPAIGN_SOURCE_KEY);
+  return campaignIds.length === 1 && campaignIds[0] === CAMPAIGN_ID ? CAMPAIGN_ID : "";
+}
+
+export function buildCampaignLandingUrl(pageUrl, campaignId = CAMPAIGN_ID) {
+  if (campaignId !== CAMPAIGN_ID) {
+    throw new Error("Campaign QR configuration is invalid.");
+  }
+  const destination = new URL(pageUrl);
+  if (!["http:", "https:"].includes(destination.protocol)
+    || destination.username || destination.password) {
+    throw new Error("Campaign QR requires a public HTTP or HTTPS page.");
+  }
+  destination.search = "";
+  destination.searchParams.set(CAMPAIGN_SOURCE_KEY, campaignId);
+  destination.hash = "interest-form";
+  return destination.href;
+}
+
+export function createCampaignQrDataUrl(destinationUrl, qrGenerator = globalThis.qrcode) {
+  if (typeof qrGenerator !== "function") {
+    throw new Error("Campaign QR generator is unavailable.");
+  }
+  const qr = qrGenerator(0, "M");
+  qr.addData(destinationUrl);
+  qr.make();
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr.createSvgTag(5, 4))}`;
+}
+
+export function buildInterestPayload(values, idempotencyKey, campaignId = "") {
   const payload = {
     idempotencyKey,
     name: values.name.trim(),
     email: values.email.trim(),
     areaCode: values.areaCode.trim(),
     consent: values.consent,
-    source: "landing-page",
+    source: campaignId === CAMPAIGN_ID
+      ? `${CAMPAIGN_SOURCE_PREFIX}${campaignId}`
+      : "landing-page",
     followUpConsent: values.followUpConsent
   };
   if (values.phone.trim()) {
@@ -226,6 +261,7 @@ function initializeInterestForm() {
   const email = form.elements.namedItem("email");
   const areaCode = form.elements.namedItem("areaCode");
   const consent = form.elements.namedItem("consent");
+  const campaignId = getCampaignId(globalThis.location?.search ?? "");
   let previousPayload = "";
   let idempotencyKey = "";
 
@@ -281,7 +317,7 @@ function initializeInterestForm() {
       idempotencyKey = newIdempotencyKey();
     }
 
-    const payload = buildInterestPayload(values, idempotencyKey);
+    const payload = buildInterestPayload(values, idempotencyKey, campaignId);
     button.disabled = true;
     button.classList.add("is-loading");
     buttonLabel.textContent = "Sending…";
@@ -294,7 +330,7 @@ function initializeInterestForm() {
       previousPayload = "";
       idempotencyKey = "";
       showStatus(status, "success", "Thanks for reaching out. Your interest has been received.");
-    } catch (error) {
+    } catch {
       const message = error instanceof RegistrationError
         ? error.message
         : "We couldn't connect just now. Your details are still here—please check your connection and try again.";
@@ -305,6 +341,29 @@ function initializeInterestForm() {
       buttonLabel.textContent = "Send my interest";
     }
   });
+}
+
+function initializeCampaignQr() {
+  const image = document.querySelector("#campaign-qr");
+  const download = document.querySelector("#campaign-qr-download");
+  const destinationText = document.querySelector("#campaign-qr-destination");
+  if (!image || !download || !destinationText) {
+    return;
+  }
+
+  try {
+    const destination = buildCampaignLandingUrl(globalThis.location.href);
+    const qrDataUrl = createCampaignQrDataUrl(destination);
+    image.src = qrDataUrl;
+    download.href = qrDataUrl;
+    destinationText.textContent = destination;
+  } catch (error) {
+    const message = document.querySelector("#campaign-qr-error");
+    message.textContent = "The QR code is unavailable here. You can still share the public site link.";
+    message.hidden = false;
+    download.hidden = true;
+    image.hidden = true;
+  }
 }
 
 function showStatus(element, type, message) {
@@ -470,6 +529,7 @@ async function initializeDevotionDiscovery() {
 }
 
 if (typeof document !== "undefined") {
+  initializeCampaignQr();
   initializeInterestForm();
   initializeChurchDiscovery();
   initializeDevotionDiscovery();
