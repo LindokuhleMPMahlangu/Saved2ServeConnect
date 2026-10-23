@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class InterestApiHandlerTest {
@@ -97,12 +98,14 @@ class InterestApiHandlerTest {
 
     @Test
     void rejectsUnknownFieldsAndInvalidFieldTypes() {
-        InterestApiHandler handler = handler(mock(InterestRepository.class));
+        InterestRepository repository = mock(InterestRepository.class);
+        InterestApiHandler handler = handler(repository);
         String unknownField = BODY.stripTrailing().substring(0, BODY.stripTrailing().length() - 1)
                 + ",\"fullAddress\":\"private\"}";
         String invalidType = BODY.replace("\"consent\":true", "\"consent\":\"yes\"");
         String invalidFollowUpConsent = BODY.stripTrailing().substring(0, BODY.stripTrailing().length() - 1)
                 + ",\"followUpConsent\":\"yes\"}";
+        String invalidSource = BODY.replace("\"source\":\"landing-page\"", "\"source\":\"alex@example.com\"");
 
         APIGatewayV2HTTPResponse unknown = handler.handleRequest(
                 event(unknownField, Map.of("content-type", "application/json")), null
@@ -113,11 +116,16 @@ class InterestApiHandlerTest {
         APIGatewayV2HTTPResponse wrongFollowUpType = handler.handleRequest(
                 event(invalidFollowUpConsent, Map.of("content-type", "application/json")), null
         );
+        APIGatewayV2HTTPResponse unapprovedSource = handler.handleRequest(
+                event(invalidSource, Map.of("content-type", "application/json")), null
+        );
 
         assertEquals(400, unknown.getStatusCode());
         assertEquals(400, wrongType.getStatusCode());
         assertEquals(400, wrongFollowUpType.getStatusCode());
+        assertEquals(400, unapprovedSource.getStatusCode());
         assertFalse(unknown.getBody().contains("private"));
+        verifyNoInteractions(repository);
     }
 
     @Test
