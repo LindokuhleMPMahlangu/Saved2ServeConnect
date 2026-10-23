@@ -30,7 +30,7 @@ Content-Type: application/json
 }
 ```
 
-`idempotencyKey`, `name`, `email`, `areaCode`, and `consent` are required. `phone` and `source` are optional strings. Consent must be `true`. Unknown properties, non-string text fields, non-boolean consent, malformed JSON, and invalid required values are rejected. Full addresses and precise coordinates are not accepted.
+`idempotencyKey`, `name`, `email`, `areaCode`, and `consent` are required. `phone` and `source` are optional strings. Consent must be `true`. If supplied, `source` must be one of `landing-page`, `qr-code`, or `campaign-qr:community-outreach`; an omitted/empty source remains accepted. Unknown properties, non-string text fields, non-boolean consent, malformed JSON, invalid source values, and invalid required values are rejected. Full addresses and precise coordinates are not accepted.
 
 ## Responses
 
