@@ -1,0 +1,623 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Privacy-conscious Save2Serve MVP API, data, identity, and follow-up infrastructure.
+
+Parameters:
+  ApiStageName:
+    Type: String
+    Default: prod
+    AllowedPattern: '^[a-zA-Z0-9_-]+$'
+  AllowedWebOrigin:
+    Type: String
+    Description: Exact HTTPS origin allowed to call the API, with no path or trailing slash.
+    AllowedPattern: '^https://[^/]+$'
+  CognitoDomainPrefix:
+    Type: String
+    Description: Globally unique prefix for the Cognito managed login domain.
+    AllowedPattern: '^[a-z0-9-]+$'
+  CognitoCallbackUrls:
+    Type: CommaDelimitedList
+    Description: Exact browser callback URLs for the public leader portal client.
+  CognitoLogoutUrls:
+    Type: CommaDelimitedList
+    Description: Exact browser sign-out URLs for the public leader portal client.
+  SesSenderEmail:
+    Type: String
+    Description: Email identity to verify in SES in this stack's deployment region.
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+  UnsubscribePageUrl:
+    Type: String
+    Description: HTTPS confirmation page that accepts recordId, recordType, and token.
+    AllowedPattern: '^https://.+$'
+
+Globals:
+  Function:
+    Runtime: java21
+    MemorySize: 512
+    Timeout: 20
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        SAVED2SERVE_TABLE_NAME: !Ref Saved2ServeRecords
+        SAVED2SERVE_KMS_KEY_ID: !GetAtt Saved2ServeDataKey.Arn
+    Tags:
+      Application: Saved2ServeConnect
+      ManagedBy: AWS-SAM
+
+Resources:
+  Saved2ServeDataKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Encrypts Saved2Serve DynamoDB records and selected contact fields.
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableAccountIamPolicies
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: kms:*
+            Resource: '*'
+      Tags:
+        - Key: Application
+          Value: Saved2ServeConnect
+
+  Saved2ServeRecords:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub '${AWS::StackName}-records'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+        - AttributeName: GSI3PK
+          AttributeType: S
+        - AttributeName: GSI3SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: StatusCreatedAtIndex
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: AreaCreatedAtIndex
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: EmailHashIndex
+          KeySchema:
+            - AttributeName: GSI3PK
+              KeyType: HASH
+            - AttributeName: GSI3SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt Saved2ServeDataKey.Arn
+      Tags:
+        - Key: Application
+          Value: Saved2ServeConnect
+
+  FollowUpDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-follow-up-dlq'
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: Application
+          Value: Saved2ServeConnect
+
+  FollowUpQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-follow-up'
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 180
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FollowUpDeadLetterQueue.Arn
+        maxReceiveCount: 5
+      Tags:
+        - Key: Application
+          Value: Saved2ServeConnect
+
+  FollowUpUnsubscribeSigningSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: HMAC secret for Save2Serve follow-up unsubscribe tokens.
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags:
+        - Key: Application
+          Value: Saved2ServeConnect
+
+  SesSenderIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref SesSenderEmail
+
+  LeaderUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-leaders'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      MfaConfiguration: OPTIONAL
+      SoftwareTokenMfaConfiguration:
+        Enabled: true
+      UserPoolTags:
+        Application: Saved2ServeConnect
+
+  LeaderGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: Administratively assigned Save2Serve leaders.
+      GroupName: Leaders
+      Precedence: 10
+      UserPoolId: !Ref LeaderUserPool
+
+  LeaderApiResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      Identifier: saved2serve
+      Name: Save2Serve leader API
+      Scopes:
+        - ScopeName: leader.read
+          ScopeDescription: Read the private leader engagement queue.
+        - ScopeName: leader.write
+          ScopeDescription: Review a pending engagement.
+      UserPoolId: !Ref LeaderUserPool
+
+  LeaderUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: LeaderApiResourceServer
+    Properties:
+      ClientName: !Sub '${AWS::StackName}-leader-portal'
+      UserPoolId: !Ref LeaderUserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - saved2serve/leader.read
+        - saved2serve/leader.write
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs: !Ref CognitoCallbackUrls
+      LogoutURLs: !Ref CognitoLogoutUrls
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  LeaderUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref LeaderUserPool
+
+  ApiAccessLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${AWS::StackName}'
+      RetentionInDays: 30
+
+  Saved2ServeApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref ApiStageName
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AllowedWebOrigin
+        AllowHeaders:
+          - Authorization
+          - Accept
+          - Content-Type
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+        AllowCredentials: false
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiAccessLogs.Arn
+        Format: '{"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength"}'
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 25
+      Auth:
+        Authorizers:
+          CognitoJwtAuthorizer:
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${LeaderUserPool}'
+              audience:
+                - !Ref LeaderUserPoolClient
+            IdentitySource: '$request.header.Authorization'
+
+  InterestApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: InterestApiLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-interest-api'
+      CodeUri: ../
+      Handler: com.saved2serve.lambda.InterestApiHandler
+      Timeout: 20
+      Environment:
+        Variables:
+          SAVED2SERVE_FOLLOW_UP_QUEUE_URL: !Ref FollowUpQueue
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:GetItem
+                - dynamodb:TransactWriteItems
+              Resource: !GetAtt Saved2ServeRecords.Arn
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub '${Saved2ServeRecords.Arn}/index/EmailHashIndex'
+            - Effect: Allow
+              Action: kms:Encrypt
+              Resource: !GetAtt Saved2ServeDataKey.Arn
+            - Effect: Allow
+              Action: sqs:SendMessage
+              Resource: !GetAtt FollowUpQueue.Arn
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-interest-api:*'
+      Events:
+        CreateInterest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Saved2ServeApi
+            Path: /v1/interests
+            Method: POST
+            PayloadFormatVersion: '2.0'
+            Auth:
+              Authorizer: NONE
+
+  EngagementApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: EngagementApiLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-engagement-api'
+      CodeUri: ../
+      Handler: com.saved2serve.lambda.EngagementApiHandler
+      Timeout: 20
+      Environment:
+        Variables:
+          SAVED2SERVE_FOLLOW_UP_QUEUE_URL: !Ref FollowUpQueue
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt Saved2ServeRecords.Arn
+            - Effect: Allow
+              Action: kms:Encrypt
+              Resource: !GetAtt Saved2ServeDataKey.Arn
+            - Effect: Allow
+              Action: sqs:SendMessage
+              Resource: !GetAtt FollowUpQueue.Arn
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-engagement-api:*'
+      Events:
+        CreateEngagement:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Saved2ServeApi
+            Path: /v1/engagements
+            Method: POST
+            PayloadFormatVersion: '2.0'
+            Auth:
+              Authorizer: NONE
+
+  ChurchDirectoryApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: ChurchDirectoryApiLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-church-directory-api'
+      CodeUri: ../
+      Handler: com.saved2serve.lambda.ChurchDirectoryApiHandler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub '${Saved2ServeRecords.Arn}/index/AreaCreatedAtIndex'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-church-directory-api:*'
+      Events:
+        ListChurches:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Saved2ServeApi
+            Path: /v1/churches
+            Method: GET
+            PayloadFormatVersion: '2.0'
+            Auth:
+              Authorizer: NONE
+
+  DevotionApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: DevotionApiLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-devotion-api'
+      CodeUri: ../
+      Handler: com.saved2serve.lambda.DevotionApiHandler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub '${Saved2ServeRecords.Arn}/index/StatusCreatedAtIndex'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-devotion-api:*'
+      Events:
+        ListDevotions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Saved2ServeApi
+            Path: /v1/devotions
+            Method: GET
+            PayloadFormatVersion: '2.0'
+            Auth:
+              Authorizer: NONE
+
+  FollowUpWithdrawalApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: FollowUpWithdrawalApiLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-follow-up-withdrawal-api'
+      CodeUri: ../
+      Handler: com.saved2serve.lambda.FollowUpWithdrawalApiHandler
+      Environment:
+        Variables:
+          SAVED2SERVE_UNSUBSCRIBE_SIGNING_SECRET: !Sub '{{resolve:secretsmanager:${FollowUpUnsubscribeSigningSecret}:SecretString}}'
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource: !GetAtt Saved2ServeRecords.Arn
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-follow-up-withdrawal-api:*'
+      Events:
+        WithdrawFollowUp:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Saved2ServeApi
+            Path: /v1/follow-ups/withdraw
+            Method: POST
+            PayloadFormatVersion: '2.0'
+            Auth:
+              Authorizer: NONE
+
+  LeaderEngagementApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: LeaderEngagementApiLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-leader-engagement-api'
+      CodeUri: ../
+      Handler: com.saved2serve.lambda.LeaderEngagementApiHandler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:TransactWriteItems
+              Resource: !GetAtt Saved2ServeRecords.Arn
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub '${Saved2ServeRecords.Arn}/index/StatusCreatedAtIndex'
+            - Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt Saved2ServeDataKey.Arn
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-leader-engagement-api:*'
+      Events:
+        ListLeaderEngagements:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Saved2ServeApi
+            Path: /v1/admin/engagements
+            Method: GET
+            PayloadFormatVersion: '2.0'
+            Auth:
+              Authorizer: CognitoJwtAuthorizer
+              AuthorizationScopes:
+                - saved2serve/leader.read
+        ReviewLeaderEngagement:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Saved2ServeApi
+            Path: /v1/admin/engagements/{id}
+            Method: PATCH
+            PayloadFormatVersion: '2.0'
+            Auth:
+              Authorizer: CognitoJwtAuthorizer
+              AuthorizationScopes:
+                - saved2serve/leader.write
+
+  FollowUpDeliveryFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: FollowUpDeliveryLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-follow-up-delivery'
+      CodeUri: ../
+      Handler: com.saved2serve.lambda.FollowUpDeliveryHandler
+      Timeout: 30
+      Environment:
+        Variables:
+          SAVED2SERVE_SES_FROM_ADDRESS: !Ref SesSenderEmail
+          SAVED2SERVE_UNSUBSCRIBE_SIGNING_SECRET: !Sub '{{resolve:secretsmanager:${FollowUpUnsubscribeSigningSecret}:SecretString}}'
+          SAVED2SERVE_UNSUBSCRIBE_URL: !Ref UnsubscribePageUrl
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !GetAtt Saved2ServeRecords.Arn
+            - Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt Saved2ServeDataKey.Arn
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: !Sub 'arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderEmail}'
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt FollowUpQueue.Arn
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-follow-up-delivery:*'
+      Events:
+        FollowUpQueueMessages:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt FollowUpQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  InterestApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-interest-api'
+      RetentionInDays: 30
+
+  EngagementApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-engagement-api'
+      RetentionInDays: 30
+
+  ChurchDirectoryApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-church-directory-api'
+      RetentionInDays: 30
+
+  DevotionApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-devotion-api'
+      RetentionInDays: 30
+
+  FollowUpWithdrawalApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-follow-up-withdrawal-api'
+      RetentionInDays: 30
+
+  LeaderEngagementApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-leader-engagement-api'
+      RetentionInDays: 30
+
+  FollowUpDeliveryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-follow-up-delivery'
+      RetentionInDays: 30
+
+Outputs:
+  ApiBaseUrl:
+    Description: HTTPS base URL for the deployed API.
+    Value: !Sub 'https://${Saved2ServeApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStageName}'
+  DynamoDbTableName:
+    Value: !Ref Saved2ServeRecords
+  KmsKeyArn:
+    Value: !GetAtt Saved2ServeDataKey.Arn
+  FollowUpQueueUrl:
+    Value: !Ref FollowUpQueue
+  FollowUpDeadLetterQueueUrl:
+    Value: !Ref FollowUpDeadLetterQueue
+  CognitoUserPoolId:
+    Value: !Ref LeaderUserPool
+  CognitoAppClientId:
+    Value: !Ref LeaderUserPoolClient
+  CognitoIssuer:
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${LeaderUserPool}'
+  CognitoHostedUiDomain:
+    Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+  SesIdentityArn:
+    Value: !Sub 'arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderEmail}'
