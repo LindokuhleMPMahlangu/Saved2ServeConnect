@@ -140,6 +140,10 @@ The repo includes a GitHub Actions workflow that runs the Maven test suite autom
 
 The Lambda bootstrap is intentionally minimal and designed to support local and test execution without requiring AWS credentials to be present in the environment. The bootstrap keeps the project focused on serverless entry points without expanding the privacy footprint of the MVP.
 
+## Day 17 AWS infrastructure
+
+The repeatable SAM/CloudFormation stack for the implemented API, Java 21 Lambda handlers, encrypted DynamoDB table, Cognito leader authorization, SQS follow-up queue/DLQ, and SES sender identity is defined in [infra/template.yaml](infra/template.yaml). It applies per-function IAM permissions, redacted API access logs, and explicit retention safeguards. Deployment inputs, permission review, validation commands, and privacy checks are in [docs/day-17-aws-infrastructure.md](docs/day-17-aws-infrastructure.md). No AWS resources are deployed by local tests.
+
 ## Privacy, retention, threat, and release decisions
 
 The project keeps the MVP intentionally narrow and privacy preserving:
@@ -193,5 +197,6 @@ Additional supporting materials are available in the docs folder:
 - day-13-public-landing-and-interest-form.md
 - day-14-discovery-pages.md
 - day-15-leader-portal.md
+- day-17-aws-infrastructure.md
 
 The architecture document is intentionally kept separate from this README.
