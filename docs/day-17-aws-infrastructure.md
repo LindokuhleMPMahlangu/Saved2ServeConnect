@@ -30,7 +30,9 @@ stack for the currently implemented MVP services:
 - API access logs contain request ID, route key, status, and response length
   only. Lambda log groups have 30-day retention; never add request bodies,
   authorization headers, queue payloads, emails, or engagement content to
-  access/application logs.
+  access/application logs. Structured application events, the operations
+  dashboard, actionable alarms, and the incident runbook are described in
+  [Day 18 observability](./day-18-observability.md).
 
 The template intentionally exposes no admin routes that are not implemented
 by this codebase. It does not create a public S3 bucket or static website
