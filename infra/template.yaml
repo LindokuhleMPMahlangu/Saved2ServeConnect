@@ -626,8 +626,8 @@ Resources:
                 "period": 300,
                 "metrics": [
                   [ "AWS/ApiGateway", "Count", "ApiId", "${Saved2ServeApi}", "Stage", "${ApiStageName}", { "label": "Requests" } ],
-                  [ ".", "5XX", ".", ".", ".", ".", { "label": "5XX responses" } ],
-                  [ ".", "4XX", ".", ".", ".", ".", { "label": "4XX responses" } ]
+                  [ ".", "5xx", ".", ".", ".", ".", { "label": "5xx responses" } ],
+                  [ ".", "4xx", ".", ".", ".", ".", { "label": "4xx responses" } ]
                 ]
               }
             },
@@ -696,7 +696,7 @@ Resources:
       AlarmName: !Sub '${AWS::StackName}-api-5xx'
       AlarmDescription: API Gateway returned at least five 5XX responses in five minutes; inspect the operations dashboard and affected Lambda logs.
       Namespace: AWS/ApiGateway
-      MetricName: 5XX
+      MetricName: 5xx
       Dimensions:
         - Name: ApiId
           Value: !Ref Saved2ServeApi
