@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.saved2serve.domain.ChurchDirectoryEntry;
 import com.saved2serve.persistence.dynamodb.DynamoDbSaved2ServeRepository;
 import com.saved2serve.service.ChurchDirectoryService;
+import com.saved2serve.util.OperationalLog;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.kms.KmsClient;
 
@@ -16,11 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.logging.Logger;
 
 public final class ChurchDirectoryApiHandler
         implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
-    private static final Logger LOGGER = Logger.getLogger(ChurchDirectoryApiHandler.class.getName());
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Set<String> ALLOWED_QUERY_PARAMETERS = Set.of("areaCode");
 
@@ -73,7 +72,9 @@ public final class ChurchDirectoryApiHandler
             List<ChurchDirectoryEntry> churches = churchDirectoryService.findByAreaCode(areaCode);
             return jsonResponse(200, Map.of("churches", churches));
         } catch (RuntimeException failure) {
-            LOGGER.severe("Church directory lookup failed.");
+            OperationalLog.error("CHURCH_DIRECTORY_LOOKUP_FAILED", Map.of(
+                    "service", "church-directory-api", "outcome", "error", "statusCode", 503
+            ));
             return errorResponse(503, "service_unavailable", "Church directory is temporarily unavailable.");
         }
     }
@@ -89,7 +90,9 @@ public final class ChurchDirectoryApiHandler
                     .withBody(OBJECT_MAPPER.writeValueAsString(body))
                     .build();
         } catch (JsonProcessingException serializationFailure) {
-            LOGGER.severe("Church directory response serialization failed.");
+            OperationalLog.error("CHURCH_DIRECTORY_RESPONSE_SERIALIZATION_FAILED", Map.of(
+                    "service", "church-directory-api", "outcome", "error", "statusCode", 503
+            ));
             return errorResponse(
                     503, "service_unavailable", "Church directory is temporarily unavailable."
             );
