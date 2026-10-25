@@ -8,8 +8,11 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Formatter;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+import java.util.logging.StreamHandler;
 
 public final class OperationalLog {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -26,14 +29,14 @@ public final class OperationalLog {
 
     static {
         LOGGER.setUseParentHandlers(false);
-        LOGGER.addHandler(new java.util.logging.StreamHandler(System.out, new java.util.logging.Formatter() {
+        LOGGER.addHandler(new StreamHandler(System.out, new Formatter() {
             @Override
-            public String format(java.util.logging.LogRecord record) {
+            public String format(LogRecord record) {
                 return record.getMessage() + System.lineSeparator();
             }
         }) {
             @Override
-            public synchronized void publish(java.util.logging.LogRecord record) {
+            public synchronized void publish(LogRecord record) {
                 super.publish(record);
                 flush();
             }
