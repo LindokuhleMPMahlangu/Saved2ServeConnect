@@ -16,6 +16,7 @@ import com.saved2serve.repository.EngagementQueueEntry;
 import com.saved2serve.repository.EngagementRepository;
 import com.saved2serve.repository.Page;
 import com.saved2serve.service.EngagementService;
+import com.saved2serve.util.OperationalLog;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.kms.KmsClient;
 
@@ -28,11 +29,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.logging.Logger;
 
 public final class LeaderEngagementApiHandler
         implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
-    private static final Logger LOGGER = Logger.getLogger(LeaderEngagementApiHandler.class.getName());
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper(
             JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build()
     );
@@ -115,7 +114,9 @@ public final class LeaderEngagementApiHandler
         } catch (IllegalArgumentException invalidQuery) {
             return errorResponse(400, "invalid_request", safeMessage(invalidQuery));
         } catch (RuntimeException failure) {
-            LOGGER.severe("Leader engagement queue lookup failed.");
+            OperationalLog.error("LEADER_ENGAGEMENT_QUEUE_LOOKUP_FAILED", Map.of(
+                    "service", "leader-engagement-api", "outcome", "error", "statusCode", 503
+            ));
             return errorResponse(503, "service_unavailable", "The review queue is temporarily unavailable.");
         }
     }
@@ -165,7 +166,9 @@ public final class LeaderEngagementApiHandler
         } catch (IllegalArgumentException invalidRequest) {
             return errorResponse(400, "invalid_request", safeMessage(invalidRequest));
         } catch (RuntimeException failure) {
-            LOGGER.severe("Leader engagement review failed.");
+            OperationalLog.error("LEADER_ENGAGEMENT_REVIEW_FAILED", Map.of(
+                    "service", "leader-engagement-api", "outcome", "error", "statusCode", 503
+            ));
             return errorResponse(503, "service_unavailable", "Engagement could not be reviewed.");
         }
     }
@@ -305,7 +308,9 @@ public final class LeaderEngagementApiHandler
                     .withBody(OBJECT_MAPPER.writeValueAsString(body))
                     .build();
         } catch (IOException serializationFailure) {
-            LOGGER.severe("Leader engagement response serialization failed.");
+            OperationalLog.error("LEADER_ENGAGEMENT_RESPONSE_SERIALIZATION_FAILED", Map.of(
+                    "service", "leader-engagement-api", "outcome", "error", "statusCode", 503
+            ));
             return errorResponse(503, "service_unavailable", "The request could not be completed.");
         }
     }
