@@ -14,6 +14,7 @@ import com.saved2serve.persistence.dynamodb.DynamoDbSaved2ServeRepository;
 import com.saved2serve.service.RegistrationService;
 import com.saved2serve.service.SqsFollowUpQueue;
 import com.saved2serve.util.Hashing;
+import com.saved2serve.util.OperationalLog;
 import com.saved2serve.validation.Saved2ServeValidator;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -27,10 +28,8 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.logging.Logger;
 
 public final class InterestApiHandler implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
-    private static final Logger LOGGER = Logger.getLogger(InterestApiHandler.class.getName());
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper(
             JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build()
     );
@@ -126,10 +125,14 @@ public final class InterestApiHandler implements RequestHandler<APIGatewayV2HTTP
             return response(400, "invalid_request", result.message());
         } catch (RegistrationService.RegistrationPersistenceException failure) {
             if (isThrottled(failure)) {
-                LOGGER.warning("Interest registration request was throttled.");
+                OperationalLog.warning("INTEREST_REGISTRATION_THROTTLED", Map.of(
+                        "service", "interest-api", "outcome", "throttled", "statusCode", 429
+                ));
                 return response(429, "throttled", "Service is temporarily busy. Please try again.");
             }
-            LOGGER.severe("Interest registration persistence failed.");
+            OperationalLog.error("INTEREST_REGISTRATION_FAILED", Map.of(
+                    "service", "interest-api", "outcome", "error", "statusCode", 503
+            ));
             return response(503, "service_unavailable", "Registration could not be completed. Please try again.");
         }
     }
