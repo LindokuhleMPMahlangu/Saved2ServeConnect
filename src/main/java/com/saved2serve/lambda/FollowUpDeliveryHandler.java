@@ -8,6 +8,7 @@ import com.saved2serve.persistence.dynamodb.DynamoDbSaved2ServeRepository;
 import com.saved2serve.service.FollowUpDeliveryWorker;
 import com.saved2serve.service.FollowUpUnsubscribeToken;
 import com.saved2serve.service.SesFollowUpEmailSender;
+import com.saved2serve.util.OperationalLog;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.kms.KmsClient;
 import software.amazon.awssdk.services.sesv2.SesV2Client;
@@ -15,10 +16,8 @@ import software.amazon.awssdk.services.sesv2.SesV2Client;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
 
 public final class FollowUpDeliveryHandler implements RequestHandler<SQSEvent, SQSBatchResponse> {
-    private static final Logger LOGGER = Logger.getLogger(FollowUpDeliveryHandler.class.getName());
     private final FollowUpDeliveryWorker worker;
 
     public FollowUpDeliveryHandler() {
@@ -58,8 +57,16 @@ public final class FollowUpDeliveryHandler implements RequestHandler<SQSEvent, S
                 failures.add(new SQSBatchResponse.BatchItemFailure(message.getMessageId()));
             }
         }
-        if (!failures.isEmpty()) {
-            LOGGER.warning("One or more follow-up messages failed and will be retried.");
+        Map<String, Object> metrics = Map.of(
+                "service", "follow-up-delivery",
+                "messageCount", event.getRecords().size(),
+                "successCount", event.getRecords().size() - failures.size(),
+                "failureCount", failures.size()
+        );
+        if (failures.isEmpty()) {
+            OperationalLog.info("FOLLOW_UP_BATCH_PROCESSED", metrics);
+        } else {
+            OperationalLog.warning("FOLLOW_UP_BATCH_PROCESSED", metrics);
         }
         return new SQSBatchResponse(failures);
     }
