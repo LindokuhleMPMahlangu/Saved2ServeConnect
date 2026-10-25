@@ -8,6 +8,7 @@ import com.saved2serve.repository.FollowUpRepository;
 import com.saved2serve.service.FollowUpDeliveryWorker;
 import com.saved2serve.service.FollowUpEmailSender;
 import com.saved2serve.service.FollowUpUnsubscribeToken;
+import com.saved2serve.util.OperationalLog;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -50,7 +51,7 @@ class FollowUpDeliveryHandlerTest {
                 "https://example.org/unsubscribe"
         );
         FollowUpDeliveryHandler handler = new FollowUpDeliveryHandler(worker);
-        Logger logger = Logger.getLogger(FollowUpDeliveryHandler.class.getName());
+        Logger logger = Logger.getLogger(OperationalLog.class.getName());
         List<String> logMessages = new java.util.ArrayList<>();
         Handler capture = new Handler() {
             @Override
@@ -84,6 +85,11 @@ class FollowUpDeliveryHandlerTest {
                 .map(SQSBatchResponse.BatchItemFailure::getItemIdentifier)
                 .toList());
         String loggedText = String.join(" ", logMessages);
+        assertEquals(1, logMessages.size());
+        org.junit.jupiter.api.Assertions.assertTrue(loggedText.contains("\"event\":\"FOLLOW_UP_BATCH_PROCESSED\""));
+        org.junit.jupiter.api.Assertions.assertTrue(loggedText.contains("\"messageCount\":2"));
+        org.junit.jupiter.api.Assertions.assertTrue(loggedText.contains("\"successCount\":1"));
+        org.junit.jupiter.api.Assertions.assertTrue(loggedText.contains("\"failureCount\":1"));
         assertFalse(loggedText.contains("a@example.org"));
         assertFalse(loggedText.contains("b@example.org"));
         assertFalse(loggedText.contains(FIRST_ID));
