@@ -8,16 +8,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.saved2serve.persistence.dynamodb.DynamoDbSaved2ServeRepository;
 import com.saved2serve.service.DevotionService;
+import com.saved2serve.util.OperationalLog;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.kms.KmsClient;
 
 import java.util.Map;
 import java.util.Objects;
-import java.util.logging.Logger;
 
 public final class DevotionApiHandler
         implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
-    private static final Logger LOGGER = Logger.getLogger(DevotionApiHandler.class.getName());
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final DevotionService devotionService;
@@ -58,7 +57,9 @@ public final class DevotionApiHandler
         try {
             return jsonResponse(200, Map.of("devotions", devotionService.findPublished()));
         } catch (RuntimeException failure) {
-            LOGGER.severe("Devotion lookup failed.");
+            OperationalLog.error("DEVOTION_LOOKUP_FAILED", Map.of(
+                    "service", "devotion-api", "outcome", "error", "statusCode", 503
+            ));
             return errorResponse(503, "service_unavailable", "Devotions are temporarily unavailable.");
         }
     }
@@ -74,7 +75,9 @@ public final class DevotionApiHandler
                     .withBody(OBJECT_MAPPER.writeValueAsString(body))
                     .build();
         } catch (JsonProcessingException serializationFailure) {
-            LOGGER.severe("Devotion response serialization failed.");
+            OperationalLog.error("DEVOTION_RESPONSE_SERIALIZATION_FAILED", Map.of(
+                    "service", "devotion-api", "outcome", "error", "statusCode", 503
+            ));
             return errorResponse(
                     503, "service_unavailable", "Devotions are temporarily unavailable."
             );
