@@ -46,6 +46,14 @@ Globals:
       ManagedBy: AWS-SAM
 
 Resources:
+  OperationalAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-operational-alerts'
+      Tags:
+        - Key: Application
+          Value: Saved2ServeConnect
+
   Saved2ServeDataKey:
     Type: AWS::KMS::Key
     DeletionPolicy: Retain
@@ -599,6 +607,205 @@ Resources:
       LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-follow-up-delivery'
       RetentionInDays: 30
 
+  OperationsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${AWS::StackName}-operations'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "API requests and server errors",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stat": "Sum",
+                "period": 300,
+                "metrics": [
+                  [ "AWS/ApiGateway", "Count", "ApiId", "${Saved2ServeApi}", "Stage", "${ApiStageName}", { "label": "Requests" } ],
+                  [ ".", "5XX", ".", ".", ".", ".", { "label": "5XX responses" } ],
+                  [ ".", "4XX", ".", ".", ".", ".", { "label": "4XX responses" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Lambda errors and throttles",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stat": "Sum",
+                "period": 300,
+                "metrics": [
+                  [ "AWS/Lambda", "Errors", "FunctionName", "${AWS::StackName}-interest-api", { "label": "Interest API errors" } ],
+                  [ ".", "Errors", ".", "${AWS::StackName}-engagement-api", { "label": "Engagement API errors" } ],
+                  [ ".", "Errors", ".", "${AWS::StackName}-church-directory-api", { "label": "Church API errors" } ],
+                  [ ".", "Errors", ".", "${AWS::StackName}-devotion-api", { "label": "Devotion API errors" } ],
+                  [ ".", "Errors", ".", "${AWS::StackName}-follow-up-withdrawal-api", { "label": "Withdrawal API errors" } ],
+                  [ ".", "Errors", ".", "${AWS::StackName}-leader-engagement-api", { "label": "Leader API errors" } ],
+                  [ ".", "Errors", ".", "${AWS::StackName}-follow-up-delivery", { "label": "Follow-up worker errors" } ],
+                  [ ".", "Throttles", ".", "${AWS::StackName}-interest-api", { "label": "Interest API throttles" } ],
+                  [ ".", "Throttles", ".", "${AWS::StackName}-engagement-api", { "label": "Engagement API throttles" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Follow-up queue processing",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stat": "Sum",
+                "period": 300,
+                "metrics": [
+                  [ "AWS/SQS", "NumberOfMessagesSent", "QueueName", "${AWS::StackName}-follow-up", { "label": "Sent" } ],
+                  [ ".", "NumberOfMessagesReceived", ".", ".", { "label": "Received" } ],
+                  [ ".", "NumberOfMessagesDeleted", ".", ".", { "label": "Deleted" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Queue age and dead-letter backlog",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stat": "Maximum",
+                "period": 300,
+                "metrics": [
+                  [ "AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", "${AWS::StackName}-follow-up", { "label": "Oldest message age (seconds)" } ],
+                  [ ".", "ApproximateNumberOfMessagesVisible", ".", "${AWS::StackName}-follow-up-dlq", { "label": "DLQ messages" } ]
+                ]
+              }
+            }
+          ]
+        }
+
+  ApiServerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-api-5xx'
+      AlarmDescription: API Gateway returned at least five 5XX responses in five minutes; inspect the operations dashboard and affected Lambda logs.
+      Namespace: AWS/ApiGateway
+      MetricName: 5XX
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref Saved2ServeApi
+        - Name: Stage
+          Value: !Ref ApiStageName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+
+  InterestApiErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-interest-api-errors'
+      AlarmDescription: Interest API Lambda recorded an error in five minutes; correlate with API 5XX and the structured error event.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref InterestApiFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+
+  EngagementApiErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-engagement-api-errors'
+      AlarmDescription: Engagement API Lambda recorded an error in five minutes; inspect structured events without logging submission fields.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref EngagementApiFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+
+  FollowUpDeliveryErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-follow-up-delivery-errors'
+      AlarmDescription: Follow-up Lambda recorded an invocation error; check partial batch failures, SQS age, DLQ, SES health, and retry limits.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FollowUpDeliveryFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+
+  FollowUpQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-follow-up-queue-age'
+      AlarmDescription: The oldest follow-up message has been waiting at least 15 minutes; check worker errors, retries, and SES health.
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FollowUpQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 900
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+
+  FollowUpDeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-follow-up-dead-letter-messages'
+      AlarmDescription: At least one follow-up message reached the DLQ; inspect failure cause before controlled redrive.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FollowUpDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+
 Outputs:
   ApiBaseUrl:
     Description: HTTPS base URL for the deployed API.
@@ -621,3 +828,7 @@ Outputs:
     Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
   SesIdentityArn:
     Value: !Sub 'arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderEmail}'
+  OperationsDashboardName:
+    Value: !Ref OperationsDashboard
+  OperationalAlertsTopicArn:
+    Value: !Ref OperationalAlertsTopic
