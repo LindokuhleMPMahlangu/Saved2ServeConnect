@@ -14,6 +14,7 @@ import com.saved2serve.domain.EngagementType;
 import com.saved2serve.persistence.dynamodb.DynamoDbSaved2ServeRepository;
 import com.saved2serve.service.EngagementService;
 import com.saved2serve.service.SqsFollowUpQueue;
+import com.saved2serve.util.OperationalLog;
 import com.saved2serve.validation.Saved2ServeValidator;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -26,11 +27,9 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.logging.Logger;
 
 public final class EngagementApiHandler
         implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
-    private static final Logger LOGGER = Logger.getLogger(EngagementApiHandler.class.getName());
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper(
             JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build()
     );
@@ -121,10 +120,14 @@ public final class EngagementApiHandler
             return response(201, "{\"status\":\"accepted\"}");
         } catch (EngagementService.EngagementPersistenceException failure) {
             if (isThrottled(failure)) {
-                LOGGER.warning("Engagement submission was throttled.");
+                OperationalLog.warning("ENGAGEMENT_SUBMISSION_THROTTLED", Map.of(
+                        "service", "engagement-api", "outcome", "throttled", "statusCode", 429
+                ));
                 return response(429, "throttled", "Service is temporarily busy. Please try again.");
             }
-            LOGGER.severe("Engagement persistence failed.");
+            OperationalLog.error("ENGAGEMENT_SUBMISSION_FAILED", Map.of(
+                    "service", "engagement-api", "outcome", "error", "statusCode", 503
+            ));
             return response(503, "service_unavailable", "Engagement could not be submitted. Please try again.");
         }
     }
