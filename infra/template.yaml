@@ -29,6 +29,12 @@ Parameters:
     Type: String
     Description: HTTPS confirmation page that accepts recordId, recordType, and token.
     AllowedPattern: '^https://.+$'
+  FollowUpMaxConcurrency:
+    Type: Number
+    Description: Maximum concurrent follow-up workers, limiting downstream SES and DynamoDB usage.
+    Default: 2
+    MinValue: 1
+    MaxValue: 10
 
 Globals:
   Function:
@@ -528,6 +534,7 @@ Resources:
       CodeUri: ../
       Handler: com.saved2serve.lambda.FollowUpDeliveryHandler
       Timeout: 30
+      ReservedConcurrentExecutions: !Ref FollowUpMaxConcurrency
       Environment:
         Variables:
           SAVED2SERVE_SES_FROM_ADDRESS: !Ref SesSenderEmail
@@ -562,6 +569,8 @@ Resources:
           Properties:
             Queue: !GetAtt FollowUpQueue.Arn
             BatchSize: 10
+            ScalingConfig:
+              MaximumConcurrency: !Ref FollowUpMaxConcurrency
             FunctionResponseTypes:
               - ReportBatchItemFailures
 
