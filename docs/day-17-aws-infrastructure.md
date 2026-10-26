@@ -98,6 +98,11 @@ successful template validation does not prove the caller has these
 permissions. This repository change does not deploy AWS resources or verify
 an AWS account's effective IAM policy.
 
+The repository's manual, reviewed GitHub Actions deployment flow is described
+in [Day 19 deployment workflow](./day-19-deployment-workflow.md). It uses
+GitHub OIDC and a protected `production` environment; it does not deploy
+automatically on every push.
+
 ## Verification checklist
 
 1. Run `sam validate --lint --template-file infra/template.yaml` and
