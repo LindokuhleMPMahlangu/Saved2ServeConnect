@@ -225,22 +225,27 @@ jobs:
               change.get("ResourceChange", {})
               for change in change_set.get("Changes", [])
           ]
+          stack_name = change_set["StackName"]
+          region = os.environ["AWS_REGION"]
+          commit_sha = os.environ["WORKFLOW_COMMIT_SHA"]
+          change_set_id = change_set["ChangeSetId"]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
               summary.write("## SAM deployment change set\n\n")
-              summary.write(f"- Stack: `{change_set[\"StackName\"]}`\n")
-              summary.write(f"- Region: `{os.environ[\"AWS_REGION\"]}`\n")
-              summary.write(f"- Validated commit: `{os.environ[\"WORKFLOW_COMMIT_SHA\"]}`\n")
-              summary.write(f"- Change set ARN: `{change_set[\"ChangeSetId\"]}`\n\n")
+              summary.write(f"- Stack: `{stack_name}`\n")
+              summary.write(f"- Region: `{region}`\n")
+              summary.write(f"- Validated commit: `{commit_sha}`\n")
+              summary.write(f"- Change set ARN: `{change_set_id}`\n\n")
               summary.write("| Action | Resource | Type | Replacement |\n")
               summary.write("|---|---|---|---|\n")
               for row in rows:
+                  action = row.get("Action", "-")
+                  resource_id = row.get("LogicalResourceId", "-")
+                  resource_type = row.get("ResourceType", "-")
+                  replacement = row.get("Replacement", "-")
                   summary.write(
-                      f"| {row.get(\"Action\", \"-\")} | "
-                      f"{row.get(\"LogicalResourceId\", \"-\")} | "
-                      f"{row.get(\"ResourceType\", \"-\")} | "
-                      f"{row.get(\"Replacement\", \"-\")} |\n"
+                      f"| {action} | {resource_id} | {resource_type} | {replacement} |\n"
                   )
-          print(change_set["ChangeSetId"])
+          print(change_set_id)
           '
 
       - name: Execute reviewed change set
