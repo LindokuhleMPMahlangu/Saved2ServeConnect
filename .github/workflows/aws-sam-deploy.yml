@@ -185,14 +185,16 @@ jobs:
             --stack-name "$SAM_STACK_NAME" \
             --region "$AWS_REGION" \
             --output json | python -c '
+          from datetime import datetime
           import json
           import os
           import sys
           summaries = json.load(sys.stdin).get("Summaries", [])
+          started_at = datetime.fromisoformat(os.environ["run_started"].replace("Z", "+00:00"))
           created = [
               item for item in summaries
               if item.get("Status") == "CREATE_COMPLETE"
-              and item.get("CreationTime", "").replace("+00:00", "Z") >= os.environ["run_started"]
+              and datetime.fromisoformat(item["CreationTime"].replace("Z", "+00:00")) >= started_at
           ]
           if created:
               print(max(created, key=lambda item: item["CreationTime"])["ChangeSetId"])
