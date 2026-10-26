@@ -62,7 +62,7 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress test
 
       - name: Test API smoke-check script
-        run: python -m unittest discover --start-directory scripts --pattern test_smoke_test_api.py
+        run: python -B -m unittest discover --start-directory scripts --pattern "test_*.py"
 
       - name: Validate SAM template
         run: sam validate --lint --template-file infra/template.yaml
@@ -91,6 +91,12 @@ jobs:
       name: production
     outputs:
       api_base_url: ${{ steps.deployment-output.outputs.api_base_url }}
+      stack_status: ${{ steps.deployment-output.outputs.stack_status }}
+      stack_last_updated_at: ${{ steps.deployment-output.outputs.stack_last_updated_at }}
+      stack_name: ${{ vars.SAM_STACK_NAME }}
+      region: ${{ vars.AWS_REGION }}
+      change_set_arn: ${{ inputs.change_set_arn }}
+      commit: ${{ github.sha }}
     permissions:
       contents: read
       id-token: write
@@ -331,16 +337,23 @@ jobs:
           SAM_STACK_NAME: ${{ vars.SAM_STACK_NAME }}
         run: |
           set -euo pipefail
-          api_base_url="$(aws cloudformation describe-stacks \
+          aws cloudformation describe-stacks \
             --stack-name "$SAM_STACK_NAME" \
             --region "$AWS_REGION" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiBaseUrl'].OutputValue | [0]" \
-            --output text)"
-          if [[ -z "$api_base_url" || "$api_base_url" == "None" ]]; then
-            echo "The deployed stack did not provide ApiBaseUrl." >&2
-            exit 1
-          fi
-          echo "api_base_url=$api_base_url" >> "$GITHUB_OUTPUT"
+            --output json | python -c '
+          import json
+          import sys
+          stack = json.load(sys.stdin)["Stacks"][0]
+          outputs = {item["OutputKey"]: item["OutputValue"] for item in stack.get("Outputs", [])}
+          api_base_url = outputs.get("ApiBaseUrl")
+          if not api_base_url or not api_base_url.startswith("https://"):
+              raise SystemExit("The deployed stack did not provide a valid HTTPS ApiBaseUrl.")
+          updated_at = stack.get("LastUpdatedTime") or stack["CreationTime"]
+          status = stack["StackStatus"]
+          print(f"api_base_url={api_base_url}")
+          print(f"stack_status={status}")
+          print(f"stack_last_updated_at={updated_at.isoformat()}")
+          ' >> "$GITHUB_OUTPUT"
 
   smoke-test:
     if: github.ref == 'refs/heads/main' && inputs.change_set_arn != ''
@@ -361,7 +374,33 @@ jobs:
           python-version: '3.x'
 
       - name: Run deployed API smoke checks
+        id: smoke
         env:
           API_BASE_URL: ${{ needs.deploy.outputs.api_base_url }}
           SMOKE_TEST_LEADER_ACCESS_TOKEN: ${{ secrets.SMOKE_TEST_LEADER_ACCESS_TOKEN }}
         run: python scripts/smoke_test_api.py
+
+      - name: Capture privacy-safe deployment evidence
+        if: always()
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          SAM_STACK_NAME: ${{ needs.deploy.outputs.stack_name }}
+          AWS_REGION: ${{ needs.deploy.outputs.region }}
+          CHANGE_SET_ARN: ${{ needs.deploy.outputs.change_set_arn }}
+          STACK_STATUS: ${{ needs.deploy.outputs.stack_status }}
+          STACK_LAST_UPDATED_AT: ${{ needs.deploy.outputs.stack_last_updated_at }}
+          SMOKE_TEST_OUTCOME: ${{ steps.smoke.outcome }}
+        run: python scripts/capture_deployment_evidence.py
+
+      - name: Upload deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saved2serve-deployment-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: deployment-evidence/evidence.json
+          if-no-files-found: warn
+          retention-days: 30
