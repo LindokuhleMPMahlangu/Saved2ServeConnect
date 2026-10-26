@@ -24,7 +24,9 @@ The workflow is manually dispatched from `main` and has two phases:
 3. After successful execution, run non-mutating API smoke checks against the
    deployed stack output. The smoke job checks public devotion and church
    reads, confirms the leader queue rejects an unauthenticated request, and
-   verifies that a current authorized leader token can read the queue.
+   verifies that a current authorized leader token can read the queue. It
+   captures a minimal deployment evidence JSON artifact even when a smoke
+   check fails.
 
 If `main` advances between review and execution, the SHA check rejects the
 old change set; prepare and review a new one. A run with no changes reports
@@ -112,12 +114,98 @@ in repository files, job outputs, or command-line parameters.
 
 The existing Java quality workflow remains unchanged. The deployment
 workflow independently runs the complete Maven test suite and SAM validation
-and build, plus offline unit tests for the smoke-check script, before any AWS
-credentials are requested. The smoke checks run only after a reviewed change
-set has executed and CloudFormation reports stack completion. Review the
-workflow YAML and GitHub Actions run logs as evidence; a successful build
-does not prove that GitHub environment settings, AWS OIDC trust, IAM
-permissions, or target account resources are correct.
+and build, plus offline unit tests for the smoke-check and evidence-capture
+scripts, before any AWS credentials are requested. The smoke checks run only
+after a reviewed change set has executed and CloudFormation reports stack
+completion. Review the workflow YAML and GitHub Actions run logs as evidence;
+a successful build does not prove that GitHub environment settings, AWS OIDC
+trust, IAM permissions, or target account resources are correct.
 
 No AWS environment was provided in this checkout, so the workflow has not
 been dispatched and no AWS resources have been created or modified.
+
+## Rollback and recovery
+
+Treat infrastructure rollback and application-data recovery as separate
+operations. The DynamoDB table and KMS key have `Retain` deletion and
+replacement policies; DynamoDB point-in-time recovery is enabled. CloudFormation
+rollback does not roll back customer records, undo messages already sent, or
+reverse external effects.
+
+### A deployment fails before stack update completes
+
+1. Stop further deployment attempts. Inspect CloudFormation stack events and
+   status in the configured account/region to determine whether CloudFormation
+   completed an automatic rollback.
+2. If an update ends in `UPDATE_ROLLBACK_COMPLETE`, preserve that known-good
+   state and review the failed resource/event. Do not retry the same change
+   set; correct the cause, then prepare a fresh change set from the current
+   `main` commit and review it before execution.
+3. If rollback itself ends in `UPDATE_ROLLBACK_FAILED`, do not delete the
+   stack or skip resources as a shortcut. Escalate to an authorized AWS
+   operator to inspect the failed resources and follow the CloudFormation
+   `continue-update-rollback` recovery procedure for the exact stack. Record
+   any resource skipped and reconcile it before another deployment.
+4. For an initial create that fails, confirm the stack reaches a terminal
+   rollback state before retrying. Check retained resources: a table or key
+   retained during rollback may still exist and may need an explicitly
+   reviewed import/reuse plan.
+
+### A deployment succeeds but smoke checks fail
+
+1. Treat the smoke-test failure as a production verification failure, not
+   proof that the stack update rolled back. Preserve the failed run's
+   evidence artifact and inspect only its deployment metadata and sanitized
+   smoke output.
+2. Check public route response shapes, API URL/stage, Cognito scopes/group,
+   deployment change-set review, and CloudFormation status. Do not include
+   access tokens, request/response bodies, user data, or queue payloads in
+   incident records.
+3. Prefer a reviewed forward fix when it is safe. If rollback is required,
+   create and merge a revert of the deployed code/infrastructure change to
+   `main`, then run the normal workflow to create and review a **new**
+   change set. Execute that change set only from the exact commit used to
+   prepare it. Do not attempt to execute an old change set or redeploy an
+   arbitrary historical commit outside the protected workflow.
+4. Wait for CloudFormation to finish and rerun the public/authenticated
+   smoke checks. Check the operations dashboard and queue/DLQ state. Account
+   for any emails already sent; an infrastructure revert cannot recall them.
+
+### Persistent data and retained resources
+
+- Never delete/recreate the retained DynamoDB table or KMS key as a rollback
+  shortcut. Review CloudFormation replacements carefully; both resources are
+  retained on deletion and replacement, so an old physical resource can
+  remain while the stack points elsewhere.
+- A reverted application version may be incompatible with records written by
+  the newer version. Check mapper/schema compatibility before reverting
+  application code. If records require recovery, use the approved DynamoDB
+  point-in-time restore procedure to a separately named table, validate it,
+  and plan a controlled cutover; do not restore over the live table without
+  an approved recovery plan.
+- Do not replay follow-up queue messages blindly. Inspect retries/DLQ through
+  an authorized workflow and prevent duplicate emails before redrive.
+- The monthly cost budget is deployed separately in `us-east-1`. Rolling back
+  the application stack does not remove or change the budget stack or its
+  SNS subscription. Keep cost notifications active during incident recovery;
+  budget alerts are not a spending cap.
+
+### Deployment evidence
+
+After a reviewed change set executes and stack status is available, the
+workflow produces `deployment-evidence/evidence.json` as the
+`saved2serve-deployment-evidence-<run>-<attempt>` Actions artifact, retained
+for 30 days. It records repository/commit, workflow run identifiers, stack
+name/region/status, stack update time, change-set ARN, record timestamp, and
+smoke-test step outcome. The artifact deliberately excludes CloudFormation
+parameters and outputs, resource physical IDs, event reason strings, HTTP
+request/response data, access tokens, and personal data.
+
+If the smoke check fails, `if: always()` still captures and uploads the
+deployment metadata and failure outcome. Preserve the failed Actions run and
+evidence artifact with the incident record; keep access limited to authorized
+maintainers because infrastructure identifiers are operationally sensitive.
+If the workflow is cancelled before evidence capture, record the run URL,
+commit, stack/region, change-set ARN, CloudFormation status/events, and
+operator actions in the approved incident/change system without copying
+personal or secret data.
