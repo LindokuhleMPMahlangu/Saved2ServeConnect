@@ -19,7 +19,12 @@ The workflow is manually dispatched from `main` and has two phases:
    the reviewed change-set ARN and the exact validated commit SHA. The
    production GitHub environment approval runs before AWS credentials are
    assumed. The workflow verifies the AWS account, stack, change-set state,
-   and commit before execution.
+   and commit before execution, then waits for the CloudFormation create or
+   update to complete.
+3. After successful execution, run non-mutating API smoke checks against the
+   deployed stack output. The smoke job checks public devotion and church
+   reads, confirms the leader queue rejects an unauthenticated request, and
+   verifies that a current authorized leader token can read the queue.
 
 If `main` advances between review and execution, the SHA check rejects the
 old change set; prepare and review a new one. A run with no changes reports
@@ -47,7 +52,13 @@ deployment job to access AWS. Configure these **environment variables**:
 
 These values configure the intended deployment, not credentials. The template
 generates its unsubscribe signing secret in Secrets Manager; do not add it to
-GitHub variables or secrets.
+GitHub variables or secrets. Add `SMOKE_TEST_LEADER_ACCESS_TOKEN` as a
+**production environment secret** containing a current, short-lived Cognito
+access token for an administratively provisioned `Leaders` user with the
+`saved2serve/leader.read` scope. Refresh it before running the execute phase;
+the smoke job fails closed if it is expired or missing the expected
+authorization. Never use a real user's long-lived credentials or print the
+token in workflow output.
 
 ## AWS OIDC role requirements
 
@@ -78,10 +89,18 @@ See [Day 17 infrastructure guidance](./day-17-aws-infrastructure.md#deployment-p
 4. Dispatch the workflow again on the same `main` commit. Supply both the
    change-set ARN and the exact reviewed commit SHA. Obtain the required
    `production` environment approval; the job checks the AWS account, stack,
-   and change-set state before execution.
-5. Monitor CloudFormation stack events to completion. Run the Day 17
-   post-deployment checks for routes, Cognito, IAM, logs, queues, and
-   retention. Configure and test the Day 18 SNS alert subscription separately.
+   and change-set state before execution and waits for stack completion.
+5. Confirm the post-deployment smoke-test job passes. It performs only GET
+   requests: public `GET /v1/devotions`, public
+   `GET /v1/churches?areaCode=1800`, unauthenticated
+   `GET /v1/admin/engagements` (expected 401/403), and authenticated
+   `GET /v1/admin/engagements` (expected 200 with a `Leaders` group token
+   carrying `saved2serve/leader.read`). Public response records are also
+   checked against their approved public-field allowlists. It does not submit,
+   review, or alter personal data.
+6. Run the remaining Day 17 post-deployment checks for Cognito, IAM, logs,
+   queues, and retention. Configure and test the Day 18 SNS alert subscription
+   separately.
 
 The workflow does not deploy from pull requests, run on every push, print
 request/submission data, or place credentials or the generated signing secret
@@ -91,10 +110,12 @@ in repository files, job outputs, or command-line parameters.
 
 The existing Java quality workflow remains unchanged. The deployment
 workflow independently runs the complete Maven test suite and SAM validation
-and build before any AWS credentials are requested. Review the workflow YAML
-and GitHub Actions run logs as evidence; a successful build does not prove
-that GitHub environment settings, AWS OIDC trust, IAM permissions, or target
-account resources are correct.
+and build, plus offline unit tests for the smoke-check script, before any AWS
+credentials are requested. The smoke checks run only after a reviewed change
+set has executed and CloudFormation reports stack completion. Review the
+workflow YAML and GitHub Actions run logs as evidence; a successful build
+does not prove that GitHub environment settings, AWS OIDC trust, IAM
+permissions, or target account resources are correct.
 
 No AWS environment was provided in this checkout, so the workflow has not
 been dispatched and no AWS resources have been created or modified.
