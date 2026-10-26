@@ -49,6 +49,7 @@ deployment job to access AWS. Configure these **environment variables**:
 | `COGNITO_LOGOUT_URLS` | Comma-separated exact HTTPS logout URLs; no URL may contain a comma. |
 | `SES_SENDER_EMAIL` | Sender identity already verified and approved in SES in the target region. |
 | `UNSUBSCRIBE_PAGE_URL` | HTTPS unsubscribe confirmation page URL. |
+| `FOLLOW_UP_MAX_CONCURRENCY` | Optional worker and queue-poller limit, integer 1–10; defaults to 2. |
 
 These values configure the intended deployment, not credentials. The template
 generates its unsubscribe signing secret in Secrets Manager; do not add it to
@@ -100,7 +101,8 @@ See [Day 17 infrastructure guidance](./day-17-aws-infrastructure.md#deployment-p
    review, or alter personal data.
 6. Run the remaining Day 17 post-deployment checks for Cognito, IAM, logs,
    queues, and retention. Configure and test the Day 18 SNS alert subscription
-   separately.
+   separately. Deploy the standalone billing-region budget and confirm its
+   alert subscription using [Day 19 cost controls](./day-19-cost-controls.md).
 
 The workflow does not deploy from pull requests, run on every push, print
 request/submission data, or place credentials or the generated signing secret
