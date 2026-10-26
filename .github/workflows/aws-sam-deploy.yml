@@ -352,7 +352,7 @@ jobs:
           status = stack["StackStatus"]
           print(f"api_base_url={api_base_url}")
           print(f"stack_status={status}")
-          print(f"stack_last_updated_at={updated_at.isoformat()}")
+          print(f"stack_last_updated_at={updated_at}")
           ' >> "$GITHUB_OUTPUT"
 
   smoke-test:
