@@ -157,6 +157,7 @@ jobs:
           COGNITO_LOGOUT_URLS: ${{ vars.COGNITO_LOGOUT_URLS }}
           SES_SENDER_EMAIL: ${{ vars.SES_SENDER_EMAIL }}
           UNSUBSCRIBE_PAGE_URL: ${{ vars.UNSUBSCRIBE_PAGE_URL }}
+          FOLLOW_UP_MAX_CONCURRENCY: ${{ vars.FOLLOW_UP_MAX_CONCURRENCY || '2' }}
           WORKFLOW_COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -167,6 +168,10 @@ jobs:
           : "${COGNITO_LOGOUT_URLS:?Set COGNITO_LOGOUT_URLS in the production GitHub environment.}"
           : "${SES_SENDER_EMAIL:?Set SES_SENDER_EMAIL in the production GitHub environment.}"
           : "${UNSUBSCRIBE_PAGE_URL:?Set UNSUBSCRIBE_PAGE_URL in the production GitHub environment.}"
+          if [[ ! "$FOLLOW_UP_MAX_CONCURRENCY" =~ ^([1-9]|10)$ ]]; then
+            echo "FOLLOW_UP_MAX_CONCURRENCY must be an integer from 1 through 10." >&2
+            exit 1
+          fi
           run_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           sam deploy \
             --stack-name "$SAM_STACK_NAME" \
@@ -184,7 +189,8 @@ jobs:
               "CognitoCallbackUrls=$COGNITO_CALLBACK_URLS" \
               "CognitoLogoutUrls=$COGNITO_LOGOUT_URLS" \
               "SesSenderEmail=$SES_SENDER_EMAIL" \
-              "UnsubscribePageUrl=$UNSUBSCRIBE_PAGE_URL"
+              "UnsubscribePageUrl=$UNSUBSCRIBE_PAGE_URL" \
+              "FollowUpMaxConcurrency=$FOLLOW_UP_MAX_CONCURRENCY"
           export run_started
           changeset_arn="$(aws cloudformation list-change-sets \
             --stack-name "$SAM_STACK_NAME" \
