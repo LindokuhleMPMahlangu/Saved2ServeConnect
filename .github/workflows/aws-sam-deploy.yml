@@ -61,6 +61,9 @@ jobs:
       - name: Run Maven tests
         run: mvn --batch-mode --no-transfer-progress test
 
+      - name: Test API smoke-check script
+        run: python -m unittest discover --start-directory scripts --pattern test_smoke_test_api.py
+
       - name: Validate SAM template
         run: sam validate --lint --template-file infra/template.yaml
 
@@ -83,6 +86,8 @@ jobs:
     timeout-minutes: 30
     environment:
       name: production
+    outputs:
+      api_base_url: ${{ steps.deployment-output.outputs.api_base_url }}
     permissions:
       contents: read
       id-token: write
@@ -281,10 +286,23 @@ jobs:
           if change_set.get("StackName") != os.environ["SAM_STACK_NAME"]:
               raise SystemExit("Change set targets an unexpected stack; refusing execution.")
           '
+          change_set_type="$(python -c 'import json, os; print(json.loads(os.environ["change_set"])["ChangeSetType"])')"
           aws cloudformation execute-change-set \
             --change-set-name "$CHANGE_SET_ARN" \
             --stack-name "$SAM_STACK_NAME" \
             --region "$AWS_REGION"
+          if [[ "$change_set_type" == "CREATE" ]]; then
+            aws cloudformation wait stack-create-complete \
+              --stack-name "$SAM_STACK_NAME" \
+              --region "$AWS_REGION"
+          elif [[ "$change_set_type" == "UPDATE" ]]; then
+            aws cloudformation wait stack-update-complete \
+              --stack-name "$SAM_STACK_NAME" \
+              --region "$AWS_REGION"
+          else
+            echo "Unsupported CloudFormation change-set type; refusing to continue." >&2
+            exit 1
+          fi
           {
             echo "## SAM deployment started"
             echo
@@ -295,3 +313,46 @@ jobs:
             echo
             echo "Monitor the CloudFormation stack events for completion."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Expose deployed API URL
+        id: deployment-output
+        if: inputs.change_set_arn != ''
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SAM_STACK_NAME: ${{ vars.SAM_STACK_NAME }}
+        run: |
+          set -euo pipefail
+          api_base_url="$(aws cloudformation describe-stacks \
+            --stack-name "$SAM_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiBaseUrl'].OutputValue | [0]" \
+            --output text)"
+          if [[ -z "$api_base_url" || "$api_base_url" == "None" ]]; then
+            echo "The deployed stack did not provide ApiBaseUrl." >&2
+            exit 1
+          fi
+          echo "api_base_url=$api_base_url" >> "$GITHUB_OUTPUT"
+
+  smoke-test:
+    if: github.ref == 'refs/heads/main' && inputs.change_set_arn != ''
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production
+    permissions:
+      contents: read
+    steps:
+      - name: Check out deployed commit
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run deployed API smoke checks
+        env:
+          API_BASE_URL: ${{ needs.deploy.outputs.api_base_url }}
+          SMOKE_TEST_LEADER_ACCESS_TOKEN: ${{ secrets.SMOKE_TEST_LEADER_ACCESS_TOKEN }}
+        run: python scripts/smoke_test_api.py
