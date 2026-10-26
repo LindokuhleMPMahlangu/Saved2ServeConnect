@@ -67,6 +67,9 @@ jobs:
       - name: Validate SAM template
         run: sam validate --lint --template-file infra/template.yaml
 
+      - name: Validate cost controls template
+        run: sam validate --lint --template-file infra/cost-controls.yaml
+
       - name: Build SAM application
         run: sam build --template-file infra/template.yaml
 
