@@ -1,0 +1,290 @@
+name: AWS SAM Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      change_set_arn:
+        description: Leave blank to create and review a change set; provide a reviewed ARN to execute it.
+        required: false
+        type: string
+      reviewed_commit_sha:
+        description: Required with change_set_arn; must match the commit that created the reviewed change set.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saved2serve-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out selected main commit
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Validate dispatch inputs
+        env:
+          CHANGE_SET_ARN: ${{ inputs.change_set_arn }}
+          REVIEWED_COMMIT_SHA: ${{ inputs.reviewed_commit_sha }}
+          WORKFLOW_COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$CHANGE_SET_ARN" && -z "$REVIEWED_COMMIT_SHA" ]]; then
+            echo "reviewed_commit_sha is required when executing a change set." >&2
+            exit 1
+          fi
+          if [[ -z "$CHANGE_SET_ARN" && -n "$REVIEWED_COMMIT_SHA" ]]; then
+            echo "change_set_arn is required when reviewed_commit_sha is provided." >&2
+            exit 1
+          fi
+          if [[ -n "$REVIEWED_COMMIT_SHA" && "$REVIEWED_COMMIT_SHA" != "$WORKFLOW_COMMIT_SHA" ]]; then
+            echo "The reviewed change set was created from a different commit. Create and review a fresh change set." >&2
+            exit 1
+          fi
+
+      - name: Run Maven tests
+        run: mvn --batch-mode --no-transfer-progress test
+
+      - name: Validate SAM template
+        run: sam validate --lint --template-file infra/template.yaml
+
+      - name: Build SAM application
+        run: sam build --template-file infra/template.yaml
+
+      - name: Save built SAM application
+        if: inputs.change_set_arn == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: saved2serve-sam-build
+          path: .aws-sam/build/
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out selected main commit
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        if: inputs.change_set_arn == ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Set up AWS SAM CLI
+        if: inputs.change_set_arn == ''
+        uses: aws-actions/setup-sam@v2
+
+      - name: Download built SAM application
+        if: inputs.change_set_arn == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: saved2serve-sam-build
+          path: .aws-sam/build/
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: Saved2ServeGitHubActions
+
+      - name: Verify deployment target
+        env:
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SAM_STACK_NAME: ${{ vars.SAM_STACK_NAME }}
+        run: |
+          set -euo pipefail
+          : "${AWS_ACCOUNT_ID:?Set AWS_ACCOUNT_ID in the production GitHub environment.}"
+          : "${AWS_REGION:?Set AWS_REGION in the production GitHub environment.}"
+          : "${SAM_STACK_NAME:?Set SAM_STACK_NAME in the production GitHub environment.}"
+          if [[ ! "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+            echo "AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
+            exit 1
+          fi
+          if [[ ${#SAM_STACK_NAME} -gt 39 ]]; then
+            echo "SAM_STACK_NAME must be no longer than 39 characters for the template's Lambda names." >&2
+            exit 1
+          fi
+          actual_account="$(aws sts get-caller-identity --query Account --output text)"
+          if [[ "$actual_account" != "$AWS_ACCOUNT_ID" ]]; then
+            echo "The assumed deployment role is in a different AWS account than AWS_ACCOUNT_ID." >&2
+            exit 1
+          fi
+
+      - name: Create change set for review
+        if: inputs.change_set_arn == ''
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SAM_STACK_NAME: ${{ vars.SAM_STACK_NAME }}
+          API_STAGE_NAME: ${{ vars.API_STAGE_NAME }}
+          ALLOWED_WEB_ORIGIN: ${{ vars.ALLOWED_WEB_ORIGIN }}
+          COGNITO_DOMAIN_PREFIX: ${{ vars.COGNITO_DOMAIN_PREFIX }}
+          COGNITO_CALLBACK_URLS: ${{ vars.COGNITO_CALLBACK_URLS }}
+          COGNITO_LOGOUT_URLS: ${{ vars.COGNITO_LOGOUT_URLS }}
+          SES_SENDER_EMAIL: ${{ vars.SES_SENDER_EMAIL }}
+          UNSUBSCRIBE_PAGE_URL: ${{ vars.UNSUBSCRIBE_PAGE_URL }}
+          WORKFLOW_COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          : "${API_STAGE_NAME:?Set API_STAGE_NAME in the production GitHub environment.}"
+          : "${ALLOWED_WEB_ORIGIN:?Set ALLOWED_WEB_ORIGIN in the production GitHub environment.}"
+          : "${COGNITO_DOMAIN_PREFIX:?Set COGNITO_DOMAIN_PREFIX in the production GitHub environment.}"
+          : "${COGNITO_CALLBACK_URLS:?Set COGNITO_CALLBACK_URLS in the production GitHub environment.}"
+          : "${COGNITO_LOGOUT_URLS:?Set COGNITO_LOGOUT_URLS in the production GitHub environment.}"
+          : "${SES_SENDER_EMAIL:?Set SES_SENDER_EMAIL in the production GitHub environment.}"
+          : "${UNSUBSCRIBE_PAGE_URL:?Set UNSUBSCRIBE_PAGE_URL in the production GitHub environment.}"
+          run_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          sam deploy \
+            --stack-name "$SAM_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --template-file .aws-sam/build/template.yaml \
+            --capabilities CAPABILITY_IAM \
+            --resolve-s3 \
+            --no-confirm-changeset \
+            --no-execute-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "ApiStageName=$API_STAGE_NAME" \
+              "AllowedWebOrigin=$ALLOWED_WEB_ORIGIN" \
+              "CognitoDomainPrefix=$COGNITO_DOMAIN_PREFIX" \
+              "CognitoCallbackUrls=$COGNITO_CALLBACK_URLS" \
+              "CognitoLogoutUrls=$COGNITO_LOGOUT_URLS" \
+              "SesSenderEmail=$SES_SENDER_EMAIL" \
+              "UnsubscribePageUrl=$UNSUBSCRIBE_PAGE_URL"
+          export run_started
+          changeset_arn="$(aws cloudformation list-change-sets \
+            --stack-name "$SAM_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --output json | python -c '
+          import json
+          import os
+          import sys
+          summaries = json.load(sys.stdin).get("Summaries", [])
+          created = [
+              item for item in summaries
+              if item.get("Status") == "CREATE_COMPLETE"
+              and item.get("CreationTime", "").replace("+00:00", "Z") >= os.environ["run_started"]
+          ]
+          if created:
+              print(max(created, key=lambda item: item["CreationTime"])["ChangeSetId"])
+          ')"
+          if [[ -z "$changeset_arn" ]]; then
+            {
+              echo "## SAM deployment review"
+              echo
+              echo "No new CloudFormation change set was created. SAM reported no changes to deploy."
+              echo
+              echo "Validated commit: \`$WORKFLOW_COMMIT_SHA\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          export changeset_arn SAM_STACK_NAME AWS_REGION WORKFLOW_COMMIT_SHA
+          aws cloudformation describe-change-set \
+            --change-set-name "$changeset_arn" \
+            --stack-name "$SAM_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --output json | python -c '
+          import json
+          import os
+          import sys
+          change_set = json.load(sys.stdin)
+          if change_set.get("Status") != "CREATE_COMPLETE":
+              raise SystemExit("The newly created change set is not ready for review.")
+          if change_set.get("StackName") != os.environ["SAM_STACK_NAME"]:
+              raise SystemExit("The change set targets an unexpected stack.")
+          rows = [
+              change.get("ResourceChange", {})
+              for change in change_set.get("Changes", [])
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## SAM deployment change set\n\n")
+              summary.write(f"- Stack: `{change_set[\"StackName\"]}`\n")
+              summary.write(f"- Region: `{os.environ[\"AWS_REGION\"]}`\n")
+              summary.write(f"- Validated commit: `{os.environ[\"WORKFLOW_COMMIT_SHA\"]}`\n")
+              summary.write(f"- Change set ARN: `{change_set[\"ChangeSetId\"]}`\n\n")
+              summary.write("| Action | Resource | Type | Replacement |\n")
+              summary.write("|---|---|---|---|\n")
+              for row in rows:
+                  summary.write(
+                      f"| {row.get(\"Action\", \"-\")} | "
+                      f"{row.get(\"LogicalResourceId\", \"-\")} | "
+                      f"{row.get(\"ResourceType\", \"-\")} | "
+                      f"{row.get(\"Replacement\", \"-\")} |\n"
+                  )
+          print(change_set["ChangeSetId"])
+          '
+
+      - name: Execute reviewed change set
+        if: inputs.change_set_arn != ''
+        env:
+          CHANGE_SET_ARN: ${{ inputs.change_set_arn }}
+          REVIEWED_COMMIT_SHA: ${{ inputs.reviewed_commit_sha }}
+          WORKFLOW_COMMIT_SHA: ${{ github.sha }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SAM_STACK_NAME: ${{ vars.SAM_STACK_NAME }}
+        run: |
+          set -euo pipefail
+          : "${CHANGE_SET_ARN:?Provide the reviewed change set ARN.}"
+          : "${REVIEWED_COMMIT_SHA:?Provide the commit SHA shown with the reviewed change set.}"
+          if [[ "$REVIEWED_COMMIT_SHA" != "$WORKFLOW_COMMIT_SHA" ]]; then
+            echo "The workflow commit does not match the commit used to prepare this change set." >&2
+            exit 1
+          fi
+          change_set="$(aws cloudformation describe-change-set \
+            --change-set-name "$CHANGE_SET_ARN" \
+            --stack-name "$SAM_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --output json)"
+          export change_set
+          python -c '
+          import json
+          import os
+          change_set = json.loads(os.environ["change_set"])
+          if change_set.get("Status") != "CREATE_COMPLETE":
+              raise SystemExit("Change set is not in CREATE_COMPLETE state; refusing execution.")
+          if change_set.get("StackName") != os.environ["SAM_STACK_NAME"]:
+              raise SystemExit("Change set targets an unexpected stack; refusing execution.")
+          '
+          aws cloudformation execute-change-set \
+            --change-set-name "$CHANGE_SET_ARN" \
+            --stack-name "$SAM_STACK_NAME" \
+            --region "$AWS_REGION"
+          {
+            echo "## SAM deployment started"
+            echo
+            echo "- Stack: \`$SAM_STACK_NAME\`"
+            echo "- Region: \`$AWS_REGION\`"
+            echo "- Reviewed commit: \`$REVIEWED_COMMIT_SHA\`"
+            echo "- Change set ARN: \`$CHANGE_SET_ARN\`"
+            echo
+            echo "Monitor the CloudFormation stack events for completion."
+          } >> "$GITHUB_STEP_SUMMARY"
