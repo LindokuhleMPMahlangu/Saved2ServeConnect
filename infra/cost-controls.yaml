@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Account-level monthly AWS cost budget and SNS notifications for Save2Serve.
+
+Parameters:
+  MonthlyBudgetAmount:
+    Type: Number
+    Description: Account-wide monthly cost alert threshold in USD; this budget is not a spending cap.
+    Default: 50
+    MinValue: 1
+    MaxValue: 1000000
+
+Resources:
+  CostAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-cost-alerts'
+      Tags:
+        - Key: Application
+          Value: Saved2ServeConnect
+
+  CostAlertsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref CostAlertsTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAccountOwnerTopicManagement
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: sns:*
+            Resource: !Ref CostAlertsTopic
+          - Sid: AllowBudgetsToPublishCostNotifications
+            Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref CostAlertsTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/${AWS::StackName}-monthly-costs'
+
+  MonthlyAccountCostBudget:
+    Type: AWS::Budgets::Budget
+    DependsOn: CostAlertsTopicPolicy
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::StackName}-monthly-costs'
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetAmount
+          Unit: USD
+        TimeUnit: MONTHLY
+        BudgetType: COST
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref CostAlertsTopic
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref CostAlertsTopic
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref CostAlertsTopic
+      ResourceTags:
+        - Key: Application
+          Value: Saved2ServeConnect
+
+Outputs:
+  MonthlyBudgetName:
+    Description: Account-wide monthly USD cost budget.
+    Value: !Sub '${AWS::StackName}-monthly-costs'
+  MonthlyBudgetAmount:
+    Description: Configured monthly USD budget threshold; notifications do not stop spending.
+    Value: !Ref MonthlyBudgetAmount
+  CostAlertsTopicArn:
+    Description: Subscribe the approved billing/on-call recipients to this SNS topic.
+    Value: !Ref CostAlertsTopic
