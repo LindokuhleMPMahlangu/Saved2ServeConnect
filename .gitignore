@@ -1,6 +1,7 @@
 # Build output
 /target/
 **/target/
+/.aws-sam/
 
 # IDE/editor files
 /.idea/
