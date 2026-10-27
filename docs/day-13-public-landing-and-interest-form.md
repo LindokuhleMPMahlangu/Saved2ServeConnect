@@ -40,6 +40,38 @@ Open `http://localhost:8000`. For a real API submission, configure the API base
 URL and allow the local origin in a non-production CORS environment; the
 repository does not configure live API credentials or services.
 
+## Public static demo on EC2
+
+For an AWS-service demonstration, `infra/ec2-user-data.sh` bootstraps an
+Amazon Linux 2023 instance with Nginx, downloads the public `main` branch
+archive, and serves the contents of `web/` over HTTP. It does not need an SSH
+key or shell access to the instance.
+
+1. In the AWS Console, open **EC2** and choose **Launch instance** in the
+   desired region.
+2. Select **Amazon Linux 2023**, a small instance type such as `t3.micro`, and
+   a new or existing security group. Enable auto-assignment of a public IPv4
+   address.
+3. Configure the security group to allow inbound **HTTP (TCP 80)** from
+   `0.0.0.0/0`. Do not add an SSH rule for this static demo.
+4. Under **Advanced details → User data**, paste the complete contents of
+   `infra/ec2-user-data.sh`, then launch the instance.
+5. Wait a few minutes for first-boot setup. In the EC2 instance details, copy
+   its public IPv4 address and open `http://<public-ip>` in a browser.
+
+The instance downloads the `main` branch when it first boots, so changes must
+be pushed to GitHub before launching. User data normally runs only on first
+boot; to deploy a later revision, relaunch an instance or update its files
+through a separate deployment method.
+
+This is an HTTP-only static demo. EC2 compute, its attached storage, public IPv4,
+and data transfer can incur charges; review your account's pricing and budget
+before launch, and stop or terminate the instance when finished. Do not enter
+real personal information. `apiBaseUrl` in `web/config.js` is empty, so
+submissions and church/devotion lookups have no backend, and leader sign-in
+requires the separate API and Cognito deployment. Use HTTPS and configure the
+API's CORS allowlist before collecting real submissions.
+
 ## Verification
 
 With Node.js 18 or newer, run the dependency-free JavaScript tests with:
