@@ -89,7 +89,7 @@ Interest and engagement submissions accept a separate optional `followUpConsent`
 
 ## Day 13 deliverables included
 
-The responsive static landing page and interest form are in `web/`. The form collects only name, email, and area/postcode as required values; phone and follow-up email permission are optional. It submits to `POST /v1/interests`, displays safe success/error outcomes, and avoids persisting or logging form values. Configure the HTTPS API base URL in `web/config.js`; the site and API must be hosted with appropriate CORS. See [docs/day-13-public-landing-and-interest-form.md](docs/day-13-public-landing-and-interest-form.md) for privacy, deployment setup, accessibility notes, and test instructions. AWS hosting and API configuration are not provisioned here.
+The responsive static landing page and interest form are in `web/`. The form collects only name, email, and area/postcode as required values; phone and follow-up email permission are optional. It submits to `POST /v1/interests`, displays safe success/error outcomes, and avoids persisting or logging form values. Configure the HTTPS API base URL in `web/config.js`; the site and API must be hosted with appropriate CORS. The `infra/ec2-user-data.sh` script bootstraps an Amazon Linux EC2 instance with Nginx to serve the static site for a public HTTP demo; it does not deploy or configure the API. See [docs/day-13-public-landing-and-interest-form.md](docs/day-13-public-landing-and-interest-form.md) for privacy, EC2 setup, accessibility notes, and test instructions.
 
 ## Day 14 deliverables included
 
