@@ -28,6 +28,7 @@ public final class ApiRouterHandler
                 "/v1/churches", this::handleChurchDirectory,
                 "/v1/devotions", this::handleDevotions,
                 "/v1/follow-ups/withdraw", this::handleFollowUpWithdrawal,
+                LEADER_ENGAGEMENT_PATH, this::handleLeaderEngagement,
                 "/v1/admin/drafts", this::handleBedrockDraft
         );
     }
@@ -47,7 +48,7 @@ public final class ApiRouterHandler
         String path = event.getRawPath();
         if (LEADER_ENGAGEMENT_PATH.equals(path)
                 || (path != null && path.startsWith(LEADER_ENGAGEMENT_PATH + "/"))) {
-            return leaderEngagementHandler().handleRequest(event, context);
+            return routes.get(LEADER_ENGAGEMENT_PATH).apply(event, context);
         }
 
         BiFunction<APIGatewayV2HTTPEvent, Context, APIGatewayV2HTTPResponse> route = routes.get(path);
@@ -72,6 +73,10 @@ public final class ApiRouterHandler
 
     private APIGatewayV2HTTPResponse handleFollowUpWithdrawal(APIGatewayV2HTTPEvent event, Context context) {
         return followUpWithdrawalApiHandler().handleRequest(event, context);
+    }
+
+    private APIGatewayV2HTTPResponse handleLeaderEngagement(APIGatewayV2HTTPEvent event, Context context) {
+        return leaderEngagementHandler().handleRequest(event, context);
     }
 
     private APIGatewayV2HTTPResponse handleBedrockDraft(APIGatewayV2HTTPEvent event, Context context) {
