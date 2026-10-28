@@ -10,7 +10,12 @@ import {
   isLeaderSessionExpired,
   validateLeaderAuthConfig
 } from "./leader-auth.js";
-import { fetchEngagementQueue, LeaderApiError, updateEngagementStatus } from "./leader-api.js";
+import {
+  fetchEngagementQueue,
+  generateLeaderDraft,
+  LeaderApiError,
+  updateEngagementStatus
+} from "./leader-api.js";
 
 const config = {
   domain: "https://saved2serve.auth.us-east-1.amazoncognito.com",
@@ -237,6 +242,40 @@ test("sends protected review PATCH and maps authorization and transition failure
       request = { url, options };
       return { ok: true, json: async () => ({ status: "APPROVED" }) };
     }
+  });
+
+  test("sends only an allowlisted generic topic to the protected no-store draft endpoint", async () => {
+    let request;
+    const draft = await generateLeaderDraft("leader-token", "welcome_note", {
+      apiBaseUrl: "https://api.example.org/",
+      fetchImpl: async (url, options) => {
+        request = { url, options };
+        return {
+          ok: true,
+          json: async () => ({ draft: "Welcome to the community.", requiresLeaderReview: true })
+        };
+      }
+    });
+    assert.equal(draft, "Welcome to the community.");
+    assert.equal(request.url, "https://api.example.org/v1/admin/drafts");
+    assert.equal(request.options.method, "POST");
+    assert.deepEqual(JSON.parse(request.options.body), { topic: "welcome_note" });
+    assert.equal(request.options.cache, "no-store");
+    assert.equal(request.options.credentials, "omit");
+    assert.equal(request.options.referrerPolicy, "no-referrer");
+    assert.equal(request.options.headers.Authorization, "Bearer leader-token");
+    await assert.rejects(
+      generateLeaderDraft("leader-token", "private submission", {
+        fetchImpl: async () => { throw new Error("Must not send free-form input."); }
+      }),
+      TypeError
+    );
+    await assert.rejects(
+      generateLeaderDraft("leader-token", "welcome_note", {
+        fetchImpl: async () => ({ ok: false, status: 403 })
+      }),
+      (error) => error instanceof LeaderApiError && error.status === 403
+    );
   });
   assert.equal(result, "APPROVED");
   assert.equal(request.url, `https://api.example.org/v1/admin/engagements/${validId}`);
