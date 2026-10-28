@@ -318,7 +318,7 @@ Resources:
     DependsOn: ApiFunctionLogGroup
     Properties:
       FunctionName: !Sub '${AWS::StackName}-api'
-      CodeUri: ./
+      CodeUri: ../
       Handler: com.saved2serve.lambda.ApiRouterHandler::handleRequest
       Timeout: 30
       Environment:
@@ -449,7 +449,7 @@ Resources:
     DependsOn: FollowUpDeliveryLogGroup
     Properties:
       FunctionName: !Sub '${AWS::StackName}-follow-up-delivery'
-      CodeUri: ./
+      CodeUri: ../
       Handler: com.saved2serve.lambda.FollowUpDeliveryHandler::handleRequest
       Timeout: 30
       ReservedConcurrentExecutions: !Ref FollowUpMaxConcurrency
