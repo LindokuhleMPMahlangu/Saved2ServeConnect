@@ -1,5 +1,12 @@
 const QUEUE_PATH = "/v1/admin/engagements";
+const DRAFT_PATH = "/v1/admin/drafts";
 const STATUSES = new Set(["PENDING_REVIEW", "APPROVED", "REJECTED"]);
+const DRAFT_TOPICS = new Set([
+  "community_encouragement",
+  "volunteer_invitation",
+  "welcome_note",
+  "prayer_support"
+]);
 
 export class LeaderApiError extends Error {
   constructor(status, message) {
@@ -68,6 +75,36 @@ export async function updateEngagementStatus(accessToken, engagementId, status, 
     throw new Error("The review response is invalid.");
   }
   return body.status;
+}
+
+export async function generateLeaderDraft(accessToken, topic, {
+  apiBaseUrl = "",
+  fetchImpl = globalThis.fetch
+} = {}) {
+  if (!DRAFT_TOPICS.has(topic)) {
+    throw new TypeError("Draft topic is invalid.");
+  }
+  const response = await fetchImpl(`${normalizeBase(apiBaseUrl)}${DRAFT_PATH}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({ topic }),
+    credentials: "omit",
+    referrerPolicy: "no-referrer",
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw apiError(response.status, "A draft could not be generated. Try again later.");
+  }
+  const body = await response.json();
+  if (!body || typeof body.draft !== "string" || !body.draft.trim()
+      || body.requiresLeaderReview !== true) {
+    throw new Error("The draft response is invalid.");
+  }
+  return body.draft;
 }
 
 function projectQueueItem(item) {
