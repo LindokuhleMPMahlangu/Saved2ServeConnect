@@ -7,6 +7,6 @@ architecture = "x86_64"
 handler = "com.saved2serve.lambda.InterestApiHandler"
 manifest_hash = ""
 packagetype = "Zip"
-functions = ["InterestApiFunction", "EngagementApiFunction", "ChurchDirectoryApiFunction", "DevotionApiFunction", "FollowUpWithdrawalApiFunction", "LeaderEngagementApiFunction", "BedrockDraftApiFunction", "FollowUpDeliveryFunction"]
+functions = ["ApiFunction", "FollowUpDeliveryFunction"]
 
 [layer_build_definitions]
