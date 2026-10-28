@@ -27,6 +27,11 @@ stack for the currently implemented MVP services:
 - A generated unsubscribe signing secret is passed only to the two functions
   that use it. No application secrets or credentials belong in source control
   or template parameters.
+- An optional Bedrock drafting Lambda and its protected API route can be
+  enabled with `EnableBedrockDrafts=true`. It is disabled by default, accepts
+  only fixed generic topic identifiers, and has `bedrock:InvokeModel`
+  permission scoped to the configured foundation model. Model access and
+  invocation may incur charges; see [Day 20 AWS credit activities](./day-20-aws-credit-activities.md).
 - API access logs contain request ID, route key, status, and response length
   only. Lambda log groups have 30-day retention; never add request bodies,
   authorization headers, queue payloads, emails, or engagement content to
