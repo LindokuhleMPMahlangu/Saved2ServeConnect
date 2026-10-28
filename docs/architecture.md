@@ -14,6 +14,10 @@ The core topology is:
 - SQS with a dead-letter queue (DLQ) decouples asynchronous processing and retries for non-critical workflows.
 - SES sends notification emails such as admin alerts and user confirmations.
 - CloudWatch provides logging, metrics, alarms, and operational visibility.
+- An optional, disabled-by-default Bedrock-backed leader drafting helper can
+  generate generic message drafts from a fixed topic list. It does not send
+  engagement submissions or personal data to the model; leaders must review
+  drafts and the application never publishes them automatically.
 
 ## Topology
 
@@ -36,6 +40,8 @@ CloudFront (HTTPS)
                         +--> SES for notifications
                         |
                         +--> CloudWatch Logs / Metrics / Alarms
+                        |
+                        +--> (optional) Amazon Bedrock for generic leader drafts
 
 Admin portal access:
   Cognito JWT validation -> API Gateway / Lambda authorizer -> protected admin routes
@@ -119,6 +125,7 @@ The platform must not infer or store precise home location data, and all locatio
 - Queue safety: use an SQS DLQ for failed async tasks and monitor retry loops to avoid silent message loss.
 - Email controls: ensure SES notifications only send to approved recipients and avoid exposing internal data in notification content.
 - Cognito authorization: require valid Cognito JWT verification on admin-only routes and reject expired or malformed tokens.
+- Bedrock usage: keep the generic draft helper disabled unless explicitly enabled, send no personal or engagement data, and require leader review of model output.
 - Data minimization: store only required fields and avoid data retention beyond the business need.
 - Public API boundary: keep user-submitted testimonies, help requests, and suggestions out of public APIs until reviewed and approved.
 - Engagement data: encrypt submitted name, optional phone, message, and email with KMS before storage; do not log or echo submission content.
