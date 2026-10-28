@@ -146,7 +146,7 @@ The Lambda bootstrap is intentionally minimal and designed to support local and 
 
 ## Day 17 AWS infrastructure
 
-The repeatable SAM/CloudFormation stack for the implemented API, Java 21 Lambda handlers, encrypted DynamoDB table, Cognito leader authorization, SQS follow-up queue/DLQ, and SES sender identity is defined in [infra/template.yaml](infra/template.yaml). It applies per-function IAM permissions, redacted API access logs, and explicit retention safeguards. Deployment inputs, permission review, validation commands, and privacy checks are in [docs/day-17-aws-infrastructure.md](docs/day-17-aws-infrastructure.md). No AWS resources are deployed by local tests.
+The repeatable SAM/CloudFormation stack for the implemented API, Java 21 Lambda handlers, encrypted DynamoDB table, Cognito leader authorization, SQS follow-up queue/DLQ, and SES sender identity is defined in [infra/template.yaml](infra/template.yaml). HTTP routes share one API Lambda; SQS delivery uses a separate worker Lambda. The stack applies trigger-level IAM permissions, redacted API access logs, and explicit retention safeguards. Deployment inputs, permission review, validation commands, and privacy checks are in [docs/day-17-aws-infrastructure.md](docs/day-17-aws-infrastructure.md). No AWS resources are deployed by local tests.
 
 ## Privacy, retention, threat, and release decisions
 
