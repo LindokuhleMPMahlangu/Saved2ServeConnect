@@ -49,6 +49,25 @@ class ApiRouterHandlerTest {
     }
 
     @Test
+    void dispatchesNestedLeaderRouteToLeaderHandler() {
+        AtomicBoolean dispatched = new AtomicBoolean();
+        ApiRouterHandler handler = new ApiRouterHandler(Map.of(
+                "/v1/admin/engagements",
+                (event, context) -> {
+                    dispatched.set(true);
+                    return response(200);
+                }
+        ));
+
+        APIGatewayV2HTTPResponse response = handler.handleRequest(
+                event("/v1/admin/engagements/engagement-123"), null
+        );
+
+        assertTrue(dispatched.get());
+        assertEquals(200, response.getStatusCode());
+    }
+
+    @Test
     void returnsBadRequestForNullEvent() {
         ApiRouterHandler handler = new ApiRouterHandler(Map.of());
 
