@@ -313,17 +313,19 @@ Resources:
                 - !Ref LeaderUserPoolClient
             IdentitySource: '$request.header.Authorization'
 
-  InterestApiFunction:
+  ApiFunction:
     Type: AWS::Serverless::Function
-    DependsOn: InterestApiLogGroup
+    DependsOn: ApiFunctionLogGroup
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-interest-api'
+      FunctionName: !Sub '${AWS::StackName}-api'
       CodeUri: ../
-      Handler: com.saved2serve.lambda.InterestApiHandler
-      Timeout: 20
+      Handler: com.saved2serve.lambda.ApiRouterHandler
+      Timeout: 30
       Environment:
         Variables:
           SAVED2SERVE_FOLLOW_UP_QUEUE_URL: !Ref FollowUpQueue
+          SAVED2SERVE_UNSUBSCRIBE_SIGNING_SECRET: !Sub '{{resolve:secretsmanager:${FollowUpUnsubscribeSigningSecret}:SecretString}}'
+          SAVED2SERVE_BEDROCK_MODEL_ID: !Ref BedrockModelId
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -331,22 +333,35 @@ Resources:
               Action:
                 - dynamodb:PutItem
                 - dynamodb:GetItem
+                - dynamodb:UpdateItem
                 - dynamodb:TransactWriteItems
               Resource: !GetAtt Saved2ServeRecords.Arn
             - Effect: Allow
               Action: dynamodb:Query
-              Resource: !Sub '${Saved2ServeRecords.Arn}/index/EmailHashIndex'
+              Resource:
+                - !GetAtt Saved2ServeRecords.Arn
+                - !Sub '${Saved2ServeRecords.Arn}/index/EmailHashIndex'
+                - !Sub '${Saved2ServeRecords.Arn}/index/AreaCreatedAtIndex'
+                - !Sub '${Saved2ServeRecords.Arn}/index/StatusCreatedAtIndex'
             - Effect: Allow
-              Action: kms:Encrypt
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
               Resource: !GetAtt Saved2ServeDataKey.Arn
             - Effect: Allow
               Action: sqs:SendMessage
               Resource: !GetAtt FollowUpQueue.Arn
+            - !If
+              - CreateBedrockDrafts
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}'
+              - !Ref AWS::NoValue
             - Effect: Allow
               Action:
                 - logs:CreateLogStream
                 - logs:PutLogEvents
-              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-interest-api:*'
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-api:*'
       Events:
         CreateInterest:
           Type: HttpApi
@@ -357,36 +372,6 @@ Resources:
             PayloadFormatVersion: '2.0'
             Auth:
               Authorizer: NONE
-
-  EngagementApiFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: EngagementApiLogGroup
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-engagement-api'
-      CodeUri: ../
-      Handler: com.saved2serve.lambda.EngagementApiHandler
-      Timeout: 20
-      Environment:
-        Variables:
-          SAVED2SERVE_FOLLOW_UP_QUEUE_URL: !Ref FollowUpQueue
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:PutItem
-              Resource: !GetAtt Saved2ServeRecords.Arn
-            - Effect: Allow
-              Action: kms:Encrypt
-              Resource: !GetAtt Saved2ServeDataKey.Arn
-            - Effect: Allow
-              Action: sqs:SendMessage
-              Resource: !GetAtt FollowUpQueue.Arn
-            - Effect: Allow
-              Action:
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-engagement-api:*'
-      Events:
         CreateEngagement:
           Type: HttpApi
           Properties:
@@ -396,26 +381,6 @@ Resources:
             PayloadFormatVersion: '2.0'
             Auth:
               Authorizer: NONE
-
-  ChurchDirectoryApiFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: ChurchDirectoryApiLogGroup
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-church-directory-api'
-      CodeUri: ../
-      Handler: com.saved2serve.lambda.ChurchDirectoryApiHandler
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource: !Sub '${Saved2ServeRecords.Arn}/index/AreaCreatedAtIndex'
-            - Effect: Allow
-              Action:
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-church-directory-api:*'
-      Events:
         ListChurches:
           Type: HttpApi
           Properties:
@@ -425,26 +390,6 @@ Resources:
             PayloadFormatVersion: '2.0'
             Auth:
               Authorizer: NONE
-
-  DevotionApiFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: DevotionApiLogGroup
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-devotion-api'
-      CodeUri: ../
-      Handler: com.saved2serve.lambda.DevotionApiHandler
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource: !Sub '${Saved2ServeRecords.Arn}/index/StatusCreatedAtIndex'
-            - Effect: Allow
-              Action:
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-devotion-api:*'
-      Events:
         ListDevotions:
           Type: HttpApi
           Properties:
@@ -454,31 +399,6 @@ Resources:
             PayloadFormatVersion: '2.0'
             Auth:
               Authorizer: NONE
-
-  FollowUpWithdrawalApiFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: FollowUpWithdrawalApiLogGroup
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-follow-up-withdrawal-api'
-      CodeUri: ../
-      Handler: com.saved2serve.lambda.FollowUpWithdrawalApiHandler
-      Environment:
-        Variables:
-          SAVED2SERVE_UNSUBSCRIBE_SIGNING_SECRET: !Sub '{{resolve:secretsmanager:${FollowUpUnsubscribeSigningSecret}:SecretString}}'
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:Query
-                - dynamodb:UpdateItem
-              Resource: !GetAtt Saved2ServeRecords.Arn
-            - Effect: Allow
-              Action:
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-follow-up-withdrawal-api:*'
-      Events:
         WithdrawFollowUp:
           Type: HttpApi
           Properties:
@@ -488,35 +408,6 @@ Resources:
             PayloadFormatVersion: '2.0'
             Auth:
               Authorizer: NONE
-
-  LeaderEngagementApiFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: LeaderEngagementApiLogGroup
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-leader-engagement-api'
-      CodeUri: ../
-      Handler: com.saved2serve.lambda.LeaderEngagementApiHandler
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:PutItem
-                - dynamodb:UpdateItem
-                - dynamodb:TransactWriteItems
-              Resource: !GetAtt Saved2ServeRecords.Arn
-            - Effect: Allow
-              Action: dynamodb:Query
-              Resource: !Sub '${Saved2ServeRecords.Arn}/index/StatusCreatedAtIndex'
-            - Effect: Allow
-              Action: kms:Decrypt
-              Resource: !GetAtt Saved2ServeDataKey.Arn
-            - Effect: Allow
-              Action:
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-leader-engagement-api:*'
-      Events:
         ListLeaderEngagements:
           Type: HttpApi
           Properties:
@@ -539,42 +430,19 @@ Resources:
               Authorizer: CognitoJwtAuthorizer
               AuthorizationScopes:
                 - saved2serve/leader.write
-
-  BedrockDraftApiFunction:
-    Type: AWS::Serverless::Function
-    Condition: CreateBedrockDrafts
-    DependsOn: BedrockDraftApiLogGroup
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-bedrock-draft-api'
-      CodeUri: ../
-      Handler: com.saved2serve.lambda.BedrockDraftApiHandler
-      Timeout: 30
-      Environment:
-        Variables:
-          SAVED2SERVE_BEDROCK_MODEL_ID: !Ref BedrockModelId
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action: bedrock:InvokeModel
-              Resource: !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}'
-            - Effect: Allow
-              Action:
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-bedrock-draft-api:*'
-      Events:
-        GenerateLeaderDraft:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Saved2ServeApi
-            Path: /v1/admin/drafts
-            Method: POST
-            PayloadFormatVersion: '2.0'
-            Auth:
-              Authorizer: CognitoJwtAuthorizer
-              AuthorizationScopes:
-                - saved2serve/leader.write
+        GenerateLeaderDraft: !If
+          - CreateBedrockDrafts
+          - Type: HttpApi
+            Properties:
+              ApiId: !Ref Saved2ServeApi
+              Path: /v1/admin/drafts
+              Method: POST
+              PayloadFormatVersion: '2.0'
+              Auth:
+                Authorizer: CognitoJwtAuthorizer
+                AuthorizationScopes:
+                  - saved2serve/leader.write
+          - !Ref AWS::NoValue
 
   FollowUpDeliveryFunction:
     Type: AWS::Serverless::Function
@@ -624,47 +492,10 @@ Resources:
             FunctionResponseTypes:
               - ReportBatchItemFailures
 
-  InterestApiLogGroup:
+  ApiFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-interest-api'
-      RetentionInDays: 30
-
-  EngagementApiLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-engagement-api'
-      RetentionInDays: 30
-
-  ChurchDirectoryApiLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-church-directory-api'
-      RetentionInDays: 30
-
-  DevotionApiLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-devotion-api'
-      RetentionInDays: 30
-
-  FollowUpWithdrawalApiLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-follow-up-withdrawal-api'
-      RetentionInDays: 30
-
-  LeaderEngagementApiLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-leader-engagement-api'
-      RetentionInDays: 30
-
-  BedrockDraftApiLogGroup:
-    Type: AWS::Logs::LogGroup
-    Condition: CreateBedrockDrafts
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-bedrock-draft-api'
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-api'
       RetentionInDays: 30
 
   FollowUpDeliveryLogGroup:
@@ -708,15 +539,9 @@ Resources:
                 "stat": "Sum",
                 "period": 300,
                 "metrics": [
-                  [ "AWS/Lambda", "Errors", "FunctionName", "${AWS::StackName}-interest-api", { "label": "Interest API errors" } ],
-                  [ ".", "Errors", ".", "${AWS::StackName}-engagement-api", { "label": "Engagement API errors" } ],
-                  [ ".", "Errors", ".", "${AWS::StackName}-church-directory-api", { "label": "Church API errors" } ],
-                  [ ".", "Errors", ".", "${AWS::StackName}-devotion-api", { "label": "Devotion API errors" } ],
-                  [ ".", "Errors", ".", "${AWS::StackName}-follow-up-withdrawal-api", { "label": "Withdrawal API errors" } ],
-                  [ ".", "Errors", ".", "${AWS::StackName}-leader-engagement-api", { "label": "Leader API errors" } ],
+                  [ "AWS/Lambda", "Errors", "FunctionName", "${AWS::StackName}-api", { "label": "API errors" } ],
                   [ ".", "Errors", ".", "${AWS::StackName}-follow-up-delivery", { "label": "Follow-up worker errors" } ],
-                  [ ".", "Throttles", ".", "${AWS::StackName}-interest-api", { "label": "Interest API throttles" } ],
-                  [ ".", "Throttles", ".", "${AWS::StackName}-engagement-api", { "label": "Engagement API throttles" } ]
+                  [ ".", "Throttles", ".", "${AWS::StackName}-api", { "label": "API throttles" } ]
                 ]
               }
             },
@@ -777,35 +602,16 @@ Resources:
       AlarmActions:
         - !Ref OperationalAlertsTopic
 
-  InterestApiErrorsAlarm:
+  ApiFunctionErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub '${AWS::StackName}-interest-api-errors'
-      AlarmDescription: Interest API Lambda recorded an error in five minutes; correlate with API 5XX and the structured error event.
+      AlarmName: !Sub '${AWS::StackName}-api-errors'
+      AlarmDescription: API Lambda recorded an error in five minutes; correlate with API 5XX and structured error events.
       Namespace: AWS/Lambda
       MetricName: Errors
       Dimensions:
         - Name: FunctionName
-          Value: !Ref InterestApiFunction
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
-      AlarmActions:
-        - !Ref OperationalAlertsTopic
-
-  EngagementApiErrorsAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub '${AWS::StackName}-engagement-api-errors'
-      AlarmDescription: Engagement API Lambda recorded an error in five minutes; inspect structured events without logging submission fields.
-      Namespace: AWS/Lambda
-      MetricName: Errors
-      Dimensions:
-        - Name: FunctionName
-          Value: !Ref EngagementApiFunction
+          Value: !Ref ApiFunction
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1
