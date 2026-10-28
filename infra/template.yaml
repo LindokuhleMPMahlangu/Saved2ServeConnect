@@ -48,7 +48,7 @@ Parameters:
     Default: amazon.nova-micro-v1:0
 
 Conditions:
-  EnableBedrockDrafts: !Equals [!Ref EnableBedrockDrafts, 'true']
+  CreateBedrockDrafts: !Equals [!Ref EnableBedrockDrafts, 'true']
 
 Globals:
   Function:
@@ -542,7 +542,7 @@ Resources:
 
   BedrockDraftApiFunction:
     Type: AWS::Serverless::Function
-    Condition: EnableBedrockDrafts
+    Condition: CreateBedrockDrafts
     DependsOn: BedrockDraftApiLogGroup
     Properties:
       FunctionName: !Sub '${AWS::StackName}-bedrock-draft-api'
@@ -662,7 +662,7 @@ Resources:
 
   BedrockDraftApiLogGroup:
     Type: AWS::Logs::LogGroup
-    Condition: EnableBedrockDrafts
+    Condition: CreateBedrockDrafts
     Properties:
       LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-bedrock-draft-api'
       RetentionInDays: 30
