@@ -99,6 +99,8 @@ The public site includes exact area/postcode church discovery using `GET /v1/chu
 
 The private leader portal is in `web/leader.html`. It uses Cognito authorization-code sign-in with PKCE, keeps the access token in memory only, and calls the protected engagement queue/review API with the required bearer token. Leaders can filter and paginate the queue, inspect private submissions, and request approve/reject transitions; the API remains authoritative for group/scope authorization and transition validation. See [docs/day-15-leader-portal.md](docs/day-15-leader-portal.md) for Cognito/API setup, session behavior, and test evidence. Cognito, API Gateway, and AWS hosting are not configured or deployed by this change.
 
+The leader portal also supports an optional, disabled-by-default Amazon Bedrock drafting helper. It sends only a selected generic topic (not engagement data) to a foundation model and requires leader review; see [docs/day-20-aws-credit-activities.md](docs/day-20-aws-credit-activities.md). That guide also covers isolated EC2/RDS learning activities and points to the existing AWS Budgets setup. None of those optional activities deploy automatically.
+
 ## Day 16 deliverables included
 
 The public page generates a self-hosted, downloadable campaign QR code for its current deployed URL, opening the interest form with the allowlisted `community-outreach` campaign identifier. The form records attribution in the existing `source` field as `campaign-qr:community-outreach`; the API allows only defined source values and adds no new personal-data fields. The campaign value is the only query parameter placed in the QR destination. See [docs/day-16-campaign-qr-attribution.md](docs/day-16-campaign-qr-attribution.md) for the attribution contract, privacy boundaries, QR behavior, and tests.
@@ -108,7 +110,7 @@ The public page generates a self-hosted, downloadable campaign QR code for its c
 - Java 21
 - Maven 3.9+
 - AWS Lambda Java Core and Events
-- AWS SDK for Java 2.x DynamoDB, KMS, SQS, and SES v2 clients
+- AWS SDK for Java 2.x DynamoDB, KMS, SQS, SES v2, and optional Bedrock Runtime clients
 - Jackson for JSON serialization
 - JUnit 5 and Mockito for testing
 
@@ -200,5 +202,6 @@ Additional supporting materials are available in the docs folder:
 - day-14-discovery-pages.md
 - day-15-leader-portal.md
 - day-17-aws-infrastructure.md
+- day-20-aws-credit-activities.md
 
 The architecture document is intentionally kept separate from this README.
