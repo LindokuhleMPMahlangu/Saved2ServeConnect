@@ -35,6 +35,20 @@ Parameters:
     Default: 2
     MinValue: 1
     MaxValue: 10
+  EnableBedrockDrafts:
+    Type: String
+    Description: Opt in to the leader-only Bedrock drafting helper; model usage may incur charges.
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'false'
+  BedrockModelId:
+    Type: String
+    Description: Foundation model ID enabled in this deployment region.
+    Default: amazon.nova-micro-v1:0
+
+Conditions:
+  EnableBedrockDrafts: !Equals [!Ref EnableBedrockDrafts, 'true']
 
 Globals:
   Function:
@@ -526,6 +540,42 @@ Resources:
               AuthorizationScopes:
                 - saved2serve/leader.write
 
+  BedrockDraftApiFunction:
+    Type: AWS::Serverless::Function
+    Condition: EnableBedrockDrafts
+    DependsOn: BedrockDraftApiLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-bedrock-draft-api'
+      CodeUri: ../
+      Handler: com.saved2serve.lambda.BedrockDraftApiHandler
+      Timeout: 30
+      Environment:
+        Variables:
+          SAVED2SERVE_BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-bedrock-draft-api:*'
+      Events:
+        GenerateLeaderDraft:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Saved2ServeApi
+            Path: /v1/admin/drafts
+            Method: POST
+            PayloadFormatVersion: '2.0'
+            Auth:
+              Authorizer: CognitoJwtAuthorizer
+              AuthorizationScopes:
+                - saved2serve/leader.write
+
   FollowUpDeliveryFunction:
     Type: AWS::Serverless::Function
     DependsOn: FollowUpDeliveryLogGroup
@@ -608,6 +658,13 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-leader-engagement-api'
+      RetentionInDays: 30
+
+  BedrockDraftApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: EnableBedrockDrafts
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-bedrock-draft-api'
       RetentionInDays: 30
 
   FollowUpDeliveryLogGroup:
