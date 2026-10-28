@@ -6,7 +6,8 @@
 stack for the currently implemented MVP services:
 
 - API Gateway HTTP API routes public interest, engagement, church, devotion,
-  and follow-up withdrawal requests to their Java 21 Lambda handlers.
+  follow-up withdrawal, and leader requests to one Java 21 API Lambda. The
+  optional draft route is added to that function when enabled.
 - The leader engagement list and review routes use the Cognito JWT authorizer
   with separate `saved2serve/leader.read` and `saved2serve/leader.write`
   scopes. `LeaderEngagementApiHandler` still checks the `Leaders` group; do
@@ -27,13 +28,15 @@ stack for the currently implemented MVP services:
 - A generated unsubscribe signing secret is passed only to the two functions
   that use it. No application secrets or credentials belong in source control
   or template parameters.
-- An optional Bedrock drafting Lambda and its protected API route can be
-  enabled with `EnableBedrockDrafts=true`. It is disabled by default, accepts
-  only fixed generic topic identifiers, and has `bedrock:InvokeModel`
-  permission scoped to the configured foundation model. Model access and
+- An optional Bedrock drafting route can be enabled with
+  `EnableBedrockDrafts=true`. It is disabled by default, accepts only fixed
+  generic topic identifiers, and adds `bedrock:InvokeModel` permission scoped
+  to the configured foundation model to the API Lambda role. Model access and
   invocation may incur charges; see [Day 20 AWS credit activities](./day-20-aws-credit-activities.md).
 - API access logs contain request ID, route key, status, and response length
-  only. Lambda log groups have 30-day retention; never add request bodies,
+  only. The API Lambda role contains the union of permissions required by its
+  HTTP routes; the SQS worker retains a separate role. Lambda log groups have
+  30-day retention; never add request bodies,
   authorization headers, queue payloads, emails, or engagement content to
   access/application logs. Structured application events, the operations
   dashboard, actionable alarms, and the incident runbook are described in
@@ -54,8 +57,7 @@ account until the stack change set and IAM permissions have been reviewed.
 From the repository root, supply exact browser URLs/origin and unique hosted
 login prefix. URLs containing commas are not supported by the
 `CommaDelimitedList` parameters. Choose a CloudFormation stack name no longer
-than 39 characters because the template uses explicit Lambda function names
-with service-specific suffixes.
+than 39 characters because the template uses explicit Lambda function names.
 
 ```powershell
 aws sts get-caller-identity
@@ -114,15 +116,19 @@ automatically on every push.
    `sam build --template-file infra/template.yaml`.
 2. Inspect the change set for the expected HTTP methods/paths, public versus
    protected route authorizers, table indexes, queue redrive configuration,
-   and separate function roles. Reject any unplanned destructive replacement.
+   the shared API Lambda and separate SQS worker roles, and removal of the
+   former route-specific API Lambdas. Reject any unplanned destructive
+   replacement.
 3. Confirm the SES identity is verified; after deploy, verify user-pool issuer,
    app-client audience, hosted domain, exact callback/logout URLs, and custom
    scopes.
 4. Verify public routes work without a token. Verify leader routes reject
    missing/invalid tokens and wrong scopes, and that a correctly scoped user
    outside `Leaders` is denied by the handler.
-5. Inspect each Lambda role to confirm only its required table/index actions,
-   KMS operations, queue actions, SES sender, and log group are granted.
+5. Inspect the API Lambda role's combined table/index, KMS, queue-send, and
+   log permissions, and the SQS worker role's table, KMS, SES sender, queue,
+   and log permissions. Confirm Bedrock invocation is granted only when
+   `EnableBedrockDrafts=true`.
 6. Confirm no logs contain request bodies, access tokens, emails, queue
    payloads, or submitted engagement content. Check queue retries and DLQ
    alarms/operations before enabling follow-up delivery for real recipients.
