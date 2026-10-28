@@ -68,6 +68,24 @@
 
         <section id="engagement-detail" class="detail-panel" aria-label="Engagement details" aria-live="polite" hidden></section>
       </div>
+
+      <section id="leader-draft-tool" class="leader-draft-tool" aria-labelledby="leader-draft-title" hidden>
+        <p class="eyebrow">OPTIONAL AI DRAFTING</p>
+        <h2 id="leader-draft-title">Create a general message draft</h2>
+        <p>Choose a topic only. Do not enter or include any personal information or submitted engagement content. Generated text must be reviewed by a leader and is never published automatically.</p>
+        <form id="leader-draft-form">
+          <label for="leader-draft-topic">Draft topic</label>
+          <select id="leader-draft-topic" name="topic" required>
+            <option value="community_encouragement">Community encouragement</option>
+            <option value="volunteer_invitation">Volunteer invitation</option>
+            <option value="welcome_note">Welcome note</option>
+            <option value="prayer_support">Prayer support</option>
+          </select>
+          <button id="leader-draft-submit" class="button button-primary" type="submit">Generate draft</button>
+        </form>
+        <p id="leader-draft-status" class="draft-status" role="status" aria-live="polite"></p>
+        <p id="leader-draft-result" class="detail-message draft-result" aria-live="polite"></p>
+      </section>
     </section>
   </main>
 
