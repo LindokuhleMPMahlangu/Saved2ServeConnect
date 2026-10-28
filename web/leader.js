@@ -5,7 +5,12 @@ import {
   completeLeaderSignIn,
   isLeaderSessionExpired
 } from "./leader-auth.js";
-import { fetchEngagementQueue, LeaderApiError, updateEngagementStatus } from "./leader-api.js";
+import {
+  fetchEngagementQueue,
+  generateLeaderDraft,
+  LeaderApiError,
+  updateEngagementStatus
+} from "./leader-api.js";
 
 const config = globalThis.SAVED2SERVE_CONFIG ?? {};
 const authConfig = config.cognito ?? {};
@@ -20,6 +25,12 @@ const queueStatus = document.querySelector("#queue-status");
 const queueResults = document.querySelector("#queue-results");
 const nextPageButton = document.querySelector("#queue-next");
 const detailPanel = document.querySelector("#engagement-detail");
+const draftTool = document.querySelector("#leader-draft-tool");
+const draftForm = document.querySelector("#leader-draft-form");
+const draftStatus = document.querySelector("#leader-draft-status");
+const draftResult = document.querySelector("#leader-draft-result");
+const draftButton = document.querySelector("#leader-draft-submit");
+const bedrockDraftsEnabled = config.bedrockDraftsEnabled === true;
 
 let session = null;
 let nextCursor = null;
@@ -43,6 +54,9 @@ function clearSensitiveView() {
   selectedItem = null;
   nextCursor = null;
   nextPageButton.hidden = true;
+  draftResult.textContent = "";
+  draftStatus.textContent = "";
+  draftButton.disabled = false;
 }
 
 function showSignedOut(message = "") {
@@ -72,6 +86,7 @@ function activateSession(authenticatedSession) {
   }, delay);
   loginPanel.hidden = true;
   portal.hidden = false;
+  draftTool.hidden = !bedrockDraftsEnabled;
   setMessage("");
 }
 
@@ -371,6 +386,42 @@ const queueStatusFilter = queueForm.elements.namedItem("status");
 nextPageButton.addEventListener("click", () => {
   if (nextCursor) {
     loadQueue(nextCursor);
+  }
+});
+
+draftForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const requestSession = session;
+  const accessToken = requireLiveSession();
+  if (!accessToken) {
+    return;
+  }
+  const topic = draftForm.elements.namedItem("topic").value;
+  draftButton.disabled = true;
+  draftStatus.textContent = "Generating a draft for leader review…";
+  draftResult.textContent = "";
+  try {
+    const draft = await generateLeaderDraft(accessToken, topic, { apiBaseUrl });
+    if (session !== requestSession) {
+      return;
+    }
+    draftResult.textContent = draft;
+    draftStatus.textContent = "Draft generated. Review and edit it before using; it is not approved or published.";
+  } catch (error) {
+    if (session !== requestSession) {
+      return;
+    }
+    if (error instanceof LeaderApiError && error.status === 401) {
+      showSignedOut(error.message);
+      return;
+    }
+    draftStatus.textContent = error instanceof LeaderApiError
+      ? error.message
+      : "A draft could not be generated. Try again later.";
+  } finally {
+    if (session === requestSession) {
+      draftButton.disabled = false;
+    }
   }
 });
 
