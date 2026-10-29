@@ -73,6 +73,26 @@ submissions and church/devotion lookups have no backend, and leader sign-in
 requires the separate API and Cognito deployment. Use HTTPS and configure the
 API's CORS allowlist before collecting real submissions.
 
+### Non-persistent interest-flow demonstration
+
+After connecting to the instance with EC2 Instance Connect, the optional
+`infra/install-ec2-demo-interest-api.sh` installer adds a small local Python
+endpoint behind Nginx. Push the updated repository to `main`, then run:
+
+```bash
+curl --fail --location --silent --show-error \
+  https://raw.githubusercontent.com/LindokuhleMPMahlangu/Saved2ServeConnect/main/infra/install-ec2-demo-interest-api.sh \
+  --output /tmp/install-ec2-demo-interest-api.sh
+sudo bash /tmp/install-ec2-demo-interest-api.sh
+```
+
+The public form displays a demo-only warning. It validates fictional details
+and responds that they were discarded; the endpoint does not persist or log
+request fields and is rate limited. This is an EC2-hosted demonstration
+endpoint, not the production Lambda/DynamoDB service. It is still HTTP, so use
+fictional values only. After the installer succeeds, remove the temporary SSH
+security-group rule used for EC2 Instance Connect when you disconnect.
+
 If first boot fails, inspect **Actions → Monitor and troubleshoot → Get system
 log**. User data is normally a one-time startup script. After correcting a
 startup failure, launch a replacement instance with the corrected script and
