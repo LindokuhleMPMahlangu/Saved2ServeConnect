@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eu
 
-dnf install -y nginx curl unzip
+dnf install -y nginx unzip
 
 curl --fail --location --silent --show-error \
   https://github.com/LindokuhleMPMahlangu/Saved2ServeConnect/archive/refs/heads/main.zip \

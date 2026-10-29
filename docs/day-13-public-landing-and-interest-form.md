@@ -73,6 +73,12 @@ submissions and church/devotion lookups have no backend, and leader sign-in
 requires the separate API and Cognito deployment. Use HTTPS and configure the
 API's CORS allowlist before collecting real submissions.
 
+If first boot fails, inspect **Actions → Monitor and troubleshoot → Get system
+log**. User data is normally a one-time startup script. After correcting a
+startup failure, launch a replacement instance with the corrected script and
+terminate the failed instance only after confirming the replacement serves the
+site.
+
 ## Verification
 
 With Node.js 18 or newer, run the dependency-free JavaScript tests with:
