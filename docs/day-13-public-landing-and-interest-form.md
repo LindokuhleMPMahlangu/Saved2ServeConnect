@@ -47,7 +47,7 @@ Amazon Linux 2023 instance with Nginx, downloads the public `main` branch
 archive, and serves the contents of `web/` over HTTP. It does not need an SSH
 key or shell access to the instance.
 
-1. In the AWS Console, select **Europe (Ireland) (`eu-west-1`)**, open **EC2**,
+1. In the AWS Console, keep **Europe (Stockholm) (`eu-north-1`)** selected, open **EC2**,
    and choose **Launch instance**.
 2. Select **Amazon Linux 2023**, a small instance type such as `t3.micro`, and
    a new or existing security group. Choose **Proceed without a key pair**;
