@@ -216,8 +216,8 @@ Resources:
           RequireSymbols: true
           RequireUppercase: true
       MfaConfiguration: OPTIONAL
-      SoftwareTokenMfaConfiguration:
-        Enabled: true
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
       UserPoolTags:
         Application: Saved2ServeConnect
 
