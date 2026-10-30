@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-import os
 import json
 import re
-import sqlite3
-import uuid
+import hashlib
+import os
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 MAX_BODY_BYTES = 16 * 1024
-MAX_DEMO_RECORDS = 100
-DEFAULT_DATABASE_PATH = "/var/lib/saved2serve-demo/registrations.sqlite3"
 ALLOWED_FIELDS = {
     "idempotencyKey",
     "name",
@@ -25,7 +22,7 @@ EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 ALLOWED_SOURCES = {"landing-page", "campaign-qr:community-outreach"}
 
 
-class DemoCapacityReached(Exception):
+class DemoIdempotencyConflict(Exception):
     pass
 
 
@@ -59,69 +56,57 @@ def validate_registration(payload):
     return True
 
 
-def save_registration(payload, database_path=None):
-    database_path = database_path or os.environ.get(
-        "SAVED2SERVE_DEMO_DB", DEFAULT_DATABASE_PATH
-    )
-    database_directory = os.path.dirname(database_path)
-    os.makedirs(database_directory, mode=0o700, exist_ok=True)
-    if os.name == "posix":
-        os.chmod(database_directory, 0o700)
+def get_demo_table():
+    import boto3
 
-    registration_id = uuid.uuid4().hex
+    table_name = os.environ.get("SAVED2SERVE_DEMO_TABLE_NAME", "").strip()
+    region = os.environ.get("AWS_REGION", "eu-north-1").strip()
+    if not table_name:
+        raise RuntimeError("The demo DynamoDB table name is not configured.")
+    return boto3.resource("dynamodb", region_name=region).Table(table_name)
+
+
+def save_registration(payload, table=None):
+    table = table or get_demo_table()
+    registration_id = "DEMO#" + hashlib.sha256(payload["idempotencyKey"].encode("utf-8")).hexdigest()
     received_at = datetime.now(timezone.utc).isoformat()
-    connection = sqlite3.connect(database_path, timeout=5)
+    persisted_fields = {
+        "name": payload["name"].strip(),
+        "email": payload["email"].strip(),
+        "phone": (payload.get("phone") or "").strip() or None,
+        "areaCode": payload["areaCode"].strip(),
+        "source": payload["source"],
+        "followUpConsent": payload.get("followUpConsent", False),
+        "consent": True,
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(persisted_fields, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    item = {
+        "registrationId": registration_id,
+        "receivedAt": received_at,
+        "consentedAt": received_at,
+        "requestFingerprint": fingerprint,
+        **persisted_fields,
+    }
     try:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS demo_registrations (
-                registration_id TEXT PRIMARY KEY,
-                received_at TEXT NOT NULL,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                phone TEXT,
-                area_code TEXT NOT NULL,
-                source TEXT NOT NULL,
-                follow_up_consent INTEGER NOT NULL,
-                consented_at TEXT NOT NULL
-            )
-            """
+        table.put_item(
+            Item=item,
+            ConditionExpression="attribute_not_exists(registrationId)",
         )
-        connection.execute("BEGIN IMMEDIATE")
-        count = connection.execute(
-            "SELECT COUNT(*) FROM demo_registrations"
-        ).fetchone()[0]
-        if count >= MAX_DEMO_RECORDS:
-            raise DemoCapacityReached
-        connection.execute(
-            """
-            INSERT INTO demo_registrations (
-                registration_id, received_at, name, email, phone, area_code,
-                source, follow_up_consent, consented_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                registration_id,
-                received_at,
-                payload["name"].strip(),
-                payload["email"].strip(),
-                (payload.get("phone") or "").strip() or None,
-                payload["areaCode"].strip(),
-                payload["source"],
-                int(payload.get("followUpConsent", False)),
-                received_at,
-            ),
-        )
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
-    finally:
-        connection.close()
+        return registration_id
+    except Exception as error:
+        error_code = getattr(error, "response", {}).get("Error", {}).get("Code")
+        if error_code != "ConditionalCheckFailedException":
+            raise
 
-    if os.name == "posix":
-        os.chmod(database_path, 0o600)
-    return registration_id
+    existing = table.get_item(
+        Key={"registrationId": registration_id},
+        ConsistentRead=True,
+    ).get("Item")
+    if existing and existing.get("requestFingerprint") == fingerprint:
+        return registration_id
+    raise DemoIdempotencyConflict
 
 
 class DemoInterestHandler(BaseHTTPRequestHandler):
@@ -137,7 +122,7 @@ class DemoInterestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/healthz":
-            self.send_json(200, {"status": "ok", "mode": "demo-persistent"})
+            self.send_json(200, {"status": "ok", "mode": "demo-dynamodb"})
             return
         self.send_json(404, {"error": "Not found."})
 
@@ -167,8 +152,11 @@ class DemoInterestHandler(BaseHTTPRequestHandler):
 
         try:
             registration_id = save_registration(payload)
-        except DemoCapacityReached:
-            self.send_json(429, {"error": "The demo registration limit has been reached."})
+        except DemoIdempotencyConflict:
+            self.send_json(409, {"error": "This demo request key was already used with different details."})
+            return
+        except Exception:
+            self.send_json(503, {"error": "The demo storage service is unavailable."})
             return
 
         self.send_json(
@@ -177,7 +165,7 @@ class DemoInterestHandler(BaseHTTPRequestHandler):
                 "mode": "demo",
                 "saved": True,
                 "registrationId": registration_id,
-                "message": "Demo only: fictional registration saved locally on this EC2 instance.",
+                "message": "Demo only: fictional registration saved to DynamoDB.",
             },
         )
 
