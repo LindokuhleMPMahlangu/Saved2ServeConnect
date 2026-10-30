@@ -45,7 +45,7 @@ test("demo registration confirmation clearly says the submission was not saved",
 });
 
 test("persistent demo confirmation warns to use fictional information", () => {
-  assert.match(getInterestSuccessMessage(true, true), /saved locally on this EC2 demo/);
+  assert.match(getInterestSuccessMessage(true, true), /saved to DynamoDB/);
   assert.match(getInterestSuccessMessage(true, true), /Do not use real information/);
 });
 
