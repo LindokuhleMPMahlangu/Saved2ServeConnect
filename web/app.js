@@ -91,7 +91,7 @@ export function getInterestSuccessMessage(demoMode = false, demoPersistence = fa
     return "Thanks for reaching out. Your interest has been received.";
   }
   return demoPersistence
-    ? "Demo only: your fictional registration was saved locally on this EC2 demo. Do not use real information."
+    ? "Demo only: your fictional registration was saved to DynamoDB. Do not use real information."
     : "Demo only: the registration was validated and discarded. No information was saved.";
 }
 
