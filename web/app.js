@@ -86,14 +86,18 @@ export function getRegistrationMessage(status) {
   return "We couldn't send your registration just now. Please try again shortly.";
 }
 
-export function getInterestSuccessMessage(demoMode = false) {
-  return demoMode
-    ? "Demo only: the registration was validated and discarded. No information was saved."
-    : "Thanks for reaching out. Your interest has been received.";
+export function getInterestSuccessMessage(demoMode = false, demoPersistence = false) {
+  if (!demoMode) {
+    return "Thanks for reaching out. Your interest has been received.";
+  }
+  return demoPersistence
+    ? "Demo only: your fictional registration was saved locally on this EC2 demo. Do not use real information."
+    : "Demo only: the registration was validated and discarded. No information was saved.";
 }
 
 export async function submitInterest(payload, {
   apiBaseUrl = "",
+  expectDemoPersistence = false,
   fetchImpl = globalThis.fetch
 } = {}) {
   if (typeof fetchImpl !== "function") {
@@ -109,6 +113,17 @@ export async function submitInterest(payload, {
   });
   if (!response.ok) {
     throw new RegistrationError(response.status, getRegistrationMessage(response.status));
+  }
+  if (expectDemoPersistence) {
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new RegistrationError(503, "The demo service did not confirm that the registration was saved.");
+    }
+    if (result?.mode !== "demo" || result?.saved !== true || !result?.registrationId) {
+      throw new RegistrationError(503, "The demo service did not confirm that the registration was saved.");
+    }
   }
   return true;
 }
@@ -268,6 +283,7 @@ function initializeInterestForm() {
   const areaCode = form.elements.namedItem("areaCode");
   const consent = form.elements.namedItem("consent");
   const demoMode = globalThis.SAVED2SERVE_CONFIG?.demoMode === true;
+  const demoPersistence = globalThis.SAVED2SERVE_CONFIG?.demoPersistence === true;
   const demoBanner = document.querySelector("#demo-mode-banner");
   if (demoMode && demoBanner) {
     demoBanner.hidden = false;
@@ -334,13 +350,14 @@ function initializeInterestForm() {
     buttonLabel.textContent = "Sending…";
     try {
       await submitInterest(payload, {
-        apiBaseUrl: globalThis.SAVED2SERVE_CONFIG?.apiBaseUrl ?? ""
+        apiBaseUrl: globalThis.SAVED2SERVE_CONFIG?.apiBaseUrl ?? "",
+        expectDemoPersistence
       });
       form.reset();
       clearFieldErrors();
       previousPayload = "";
       idempotencyKey = "";
-      showStatus(status, "success", getInterestSuccessMessage(demoMode));
+      showStatus(status, "success", getInterestSuccessMessage(demoMode, demoPersistence));
     } catch (error) {
       const message = error instanceof RegistrationError
         ? error.message
