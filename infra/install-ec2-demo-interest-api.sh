@@ -50,7 +50,7 @@ window.SAVED2SERVE_CONFIG = Object.freeze({
 });
 CONFIG
 
-cat > /etc/systemd/system/saved2serve-demo-api.service <<'UNIT'
+cat > /etc/systemd/system/saved2serve-demo-api.service <<UNIT
 [Unit]
 Description=Save2Serve fictional-data demonstration API
 After=network.target
