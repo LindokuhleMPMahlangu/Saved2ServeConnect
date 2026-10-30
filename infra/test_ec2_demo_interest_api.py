@@ -53,9 +53,6 @@ class DemoInterestApiTests(unittest.TestCase):
     def setUp(self):
         from infra import ec2_demo_interest_api
 
-        with ec2_demo_interest_api.GEOCODE_LOCK:
-            ec2_demo_interest_api.GEOCODE_CACHE.clear()
-            ec2_demo_interest_api.LAST_NOMINATIM_REQUEST = 0.0
         with ec2_demo_interest_api.GOOGLE_REQUEST_LOCK:
             ec2_demo_interest_api.LAST_GOOGLE_REQUEST = 0.0
         self.table = FakeDynamoTable()
@@ -125,36 +122,20 @@ class DemoInterestApiTests(unittest.TestCase):
             json.loads(body), {"status": "ok", "mode": "demo-dynamodb"}
         )
 
-    def test_church_lookup_queries_google_places_within_five_kilometers(self):
+    def test_church_lookup_queries_google_places_with_the_area(self):
         from unittest.mock import patch
 
         from infra import ec2_demo_interest_api
 
-        map_responses = [
-            [{"lat": "-26.2041", "lon": "28.0473"}],
-            {
-                "places": [
-                    {
-                        "id": "place-id",
-                        "displayName": {"text": "Fictional Test Church"},
-                        "formattedAddress": "1 Example Road, Johannesburg",
-                        "location": {"latitude": -26.204, "longitude": 28.047},
-                    },
-                    {
-                        "id": "outside",
-                        "displayName": {"text": "Outside Radius"},
-                        "formattedAddress": "Far away",
-                        "location": {"latitude": -26.27, "longitude": 28.047},
-                    },
-                ]
-            },
-        ]
+        map_response = {
+            "places": [{
+                "id": "place-id",
+                "displayName": {"text": "Fictional Test Church"},
+                "formattedAddress": "1 Example Road, Johannesburg",
+            }]
+        }
         with patch.dict("os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}):
-            with patch.object(
-                ec2_demo_interest_api,
-                "_fetch_map_json",
-                side_effect=map_responses,
-            ) as fetch:
+            with patch.object(ec2_demo_interest_api, "_fetch_map_json", return_value=map_response) as fetch:
                 churches = find_churches("2001")
 
         self.assertEqual(churches, [{
@@ -164,14 +145,15 @@ class DemoInterestApiTests(unittest.TestCase):
             "publicAddress": "1 Example Road, Johannesburg",
             "mapUrl": "https://www.google.com/maps/search/?api=1&query_place_id=place-id",
         }])
-        self.assertEqual(fetch.call_count, 2)
-        self.assertIn("postalcode=2001", fetch.call_args_list[0].args[0])
-        self.assertIn("countrycodes=za", fetch.call_args_list[0].args[0])
-        request_url, request_data, headers = fetch.call_args_list[1].args
+        self.assertEqual(fetch.call_count, 1)
+        request_url, request_data, headers = fetch.call_args.args
         self.assertEqual(request_url, ec2_demo_interest_api.GOOGLE_PLACES_URL)
         request_body = json.loads(request_data)
+        self.assertEqual(
+            request_body["textQuery"],
+            "churches near 2001, Johannesburg, South Africa",
+        )
         self.assertEqual(request_body["includedType"], "church")
-        self.assertEqual(request_body["locationRestriction"]["circle"]["radius"], 5000)
         self.assertEqual(headers["X-Goog-Api-Key"], "test-key")
         self.assertNotIn("places.websiteUri", headers["X-Goog-FieldMask"])
 
@@ -182,16 +164,14 @@ class DemoInterestApiTests(unittest.TestCase):
 
         with patch.object(
             ec2_demo_interest_api,
-            "_find_area_location",
-            return_value=(-26.2, 28.0),
-        ), patch.object(
-            ec2_demo_interest_api,
             "_query_churches",
             side_effect=[[{"churchId": "google:first"}], [{"churchId": "google:second"}]],
         ) as search:
             self.assertEqual(find_churches("2001"), [{"churchId": "google:first"}])
             self.assertEqual(find_churches("2001"), [{"churchId": "google:second"}])
         self.assertEqual(search.call_count, 2)
+        self.assertEqual(search.call_args_list[0].args, ("2001",))
+        self.assertEqual(search.call_args_list[1].args, ("2001",))
 
     def test_google_places_requires_server_side_api_key(self):
         from unittest.mock import patch
@@ -200,7 +180,7 @@ class DemoInterestApiTests(unittest.TestCase):
 
         with patch.dict("os.environ", {"GOOGLE_MAPS_API_KEY": ""}):
             with self.assertRaises(ec2_demo_interest_api.ChurchLookupError):
-                ec2_demo_interest_api._query_churches(-26.2, 28.0)
+                ec2_demo_interest_api._query_churches("2001")
 
     def test_church_lookup_rejects_full_addresses_and_unbounded_queries(self):
         for area in ["", "1 Example Street, Johannesburg", "A" * 25, "2001\t2010"]:
