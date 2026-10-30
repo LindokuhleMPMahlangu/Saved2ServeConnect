@@ -1,20 +1,37 @@
 import http.client
 import json
-import os
-import sqlite3
-import tempfile
 import threading
 import unittest
-from contextlib import closing
 from http.server import ThreadingHTTPServer
-from unittest.mock import patch
 
 from infra.ec2_demo_interest_api import (
-    DemoCapacityReached,
+    DemoIdempotencyConflict,
     DemoInterestHandler,
     save_registration,
     validate_registration,
 )
+
+
+class ConditionalCheckFailed(Exception):
+    def __init__(self):
+        self.response = {"Error": {"Code": "ConditionalCheckFailedException"}}
+
+
+class FakeDynamoTable:
+    def __init__(self):
+        self.items = {}
+
+    def put_item(self, Item, ConditionExpression):
+        if ConditionExpression != "attribute_not_exists(registrationId)":
+            raise AssertionError("Unexpected write condition.")
+        if Item["registrationId"] in self.items:
+            raise ConditionalCheckFailed()
+        self.items[Item["registrationId"]] = Item
+
+    def get_item(self, Key, ConsistentRead):
+        if not ConsistentRead:
+            raise AssertionError("Idempotency reads must be consistent.")
+        return {"Item": self.items.get(Key["registrationId"])}
 
 
 class DemoInterestApiTests(unittest.TestCase):
@@ -32,12 +49,7 @@ class DemoInterestApiTests(unittest.TestCase):
         cls.server.server_close()
 
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.database_path = os.path.join(self.temp_dir.name, "records.sqlite3")
-        self.db_environment = patch.dict(
-            os.environ, {"SAVED2SERVE_DEMO_DB": self.database_path}
-        )
-        self.db_environment.start()
+        self.table = FakeDynamoTable()
         self.payload = {
             "idempotencyKey": "attempt-123",
             "name": "Fictional Example",
@@ -47,10 +59,6 @@ class DemoInterestApiTests(unittest.TestCase):
             "source": "landing-page",
             "followUpConsent": False,
         }
-
-    def tearDown(self):
-        self.db_environment.stop()
-        self.temp_dir.cleanup()
 
     def request(self, method, path, body=None):
         connection = http.client.HTTPConnection("127.0.0.1", self.port)
@@ -65,32 +73,47 @@ class DemoInterestApiTests(unittest.TestCase):
     def test_accepts_valid_demo_payload(self):
         self.assertTrue(validate_registration(self.payload))
 
-    def test_post_saves_registration_without_returning_submitted_data(self):
-        status, cache_control, body = self.request("POST", "/v1/interests", self.payload)
+    def test_post_saves_to_dynamodb_without_returning_submitted_data(self):
+        registration_id = save_registration(self.payload, self.table)
+        item = self.table.items[registration_id]
+        self.assertEqual(item["name"], "Fictional Example")
+        self.assertEqual(item["email"], "fictional@example.org")
+        self.assertEqual(item["areaCode"], "1800")
+        self.assertEqual(item["followUpConsent"], False)
+        self.assertNotIn("idempotencyKey", item)
+
+    def test_same_idempotency_key_and_payload_is_idempotent(self):
+        first_id = save_registration(self.payload, self.table)
+        retry_id = save_registration(self.payload, self.table)
+        self.assertEqual(first_id, retry_id)
+        self.assertEqual(len(self.table.items), 1)
+
+    def test_reusing_idempotency_key_for_changed_payload_conflicts(self):
+        save_registration(self.payload, self.table)
+        changed_payload = {**self.payload, "email": "different@example.org"}
+        with self.assertRaises(DemoIdempotencyConflict):
+            save_registration(changed_payload, self.table)
+        self.assertEqual(len(self.table.items), 1)
+
+    def test_post_saves_and_returns_demo_registration(self):
+        from unittest.mock import patch
+
+        with patch("infra.ec2_demo_interest_api.save_registration", return_value="DEMO#abc"):
+            status, cache_control, body = self.request(
+                "POST", "/v1/interests", self.payload
+            )
         self.assertEqual(status, 201)
         self.assertEqual(cache_control, "no-store")
         response_body = json.loads(body)
         self.assertTrue(response_body["saved"])
-        self.assertIn("registrationId", response_body)
+        self.assertEqual(response_body["registrationId"], "DEMO#abc")
         self.assertNotIn("email", response_body)
 
-        with closing(sqlite3.connect(self.database_path)) as connection:
-            row = connection.execute(
-                "SELECT name, email, area_code FROM demo_registrations"
-            ).fetchone()
-        self.assertEqual(row, ("Fictional Example", "fictional@example.org", "1800"))
-
-    def test_post_rejects_missing_consent(self):
-        status, _, _ = self.request(
-            "POST", "/v1/interests", {**self.payload, "consent": False}
-        )
-        self.assertEqual(status, 400)
-
-    def test_health_endpoint_reports_demo_mode(self):
+    def test_health_endpoint_reports_dynamodb_demo_mode(self):
         status, _, body = self.request("GET", "/healthz")
         self.assertEqual(status, 200)
         self.assertEqual(
-            json.loads(body), {"status": "ok", "mode": "demo-persistent"}
+            json.loads(body), {"status": "ok", "mode": "demo-dynamodb"}
         )
 
     def test_rejects_unexpected_fields(self):
@@ -107,36 +130,6 @@ class DemoInterestApiTests(unittest.TestCase):
 
     def test_rejects_non_boolean_follow_up_consent(self):
         self.assertFalse(validate_registration({**self.payload, "followUpConsent": "yes"}))
-
-    def test_persistence_limit_is_enforced(self):
-        with closing(sqlite3.connect(self.database_path)) as connection:
-            with connection:
-                connection.execute(
-                    """
-                    CREATE TABLE demo_registrations (
-                        registration_id TEXT PRIMARY KEY,
-                        received_at TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        email TEXT NOT NULL,
-                        phone TEXT,
-                        area_code TEXT NOT NULL,
-                        source TEXT NOT NULL,
-                        follow_up_consent INTEGER NOT NULL,
-                        consented_at TEXT NOT NULL
-                    )
-                    """
-                )
-                connection.executemany(
-                    "INSERT INTO demo_registrations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        (str(index), "now", "Example", "fictional@example.org", None,
-                         "1800", "landing-page", 0, "now")
-                        for index in range(100)
-                    ],
-                )
-        with self.assertRaises(DemoCapacityReached):
-            save_registration(self.payload, self.database_path)
-
 
 if __name__ == "__main__":
     unittest.main()
