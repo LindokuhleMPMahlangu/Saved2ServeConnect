@@ -26,6 +26,9 @@ unzip -q /tmp/saved2serve-main.zip -d /tmp/saved2serve-source
 
 release_dir=/tmp/saved2serve-source/Saved2ServeConnect-main
 install -d -m 0755 /var/www/saved2serve /opt/saved2serve
+if [ ! -e /etc/saved2serve-demo-api.env ]; then
+  install -o root -g root -m 0600 /dev/null /etc/saved2serve-demo-api.env
+fi
 cp -a "$release_dir/web/." /var/www/saved2serve/
 install -m 0644 "$release_dir/infra/ec2_demo_interest_api.py" \
   /opt/saved2serve/ec2_demo_interest_api.py
@@ -61,7 +64,7 @@ ExecStart=/usr/bin/python3 /opt/saved2serve/ec2_demo_interest_api.py
 Environment=SAVED2SERVE_DEMO_TABLE_NAME=$table_name
 Environment=AWS_REGION=$region
 Environment=SAVED2SERVE_NOMINATIM_URL=https://nominatim.openstreetmap.org/search
-Environment=SAVED2SERVE_OVERPASS_URLS=https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter
+EnvironmentFile=-/etc/saved2serve-demo-api.env
 Restart=on-failure
 RestartSec=3
 User=nginx
