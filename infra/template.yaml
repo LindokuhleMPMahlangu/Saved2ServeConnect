@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Privacy-conscious Save2Serve MVP API, data, identity, and follow-up infrastructure.
+Description: Privacy-conscious Saved2Serve MVP API, data, identity, and follow-up infrastructure.
 
 Parameters:
   ApiStageName:
@@ -185,7 +185,7 @@ Resources:
   FollowUpUnsubscribeSigningSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Description: HMAC secret for Save2Serve follow-up unsubscribe tokens.
+      Description: HMAC secret for Saved2Serve follow-up unsubscribe tokens.
       GenerateSecretString:
         PasswordLength: 64
         ExcludePunctuation: true
@@ -224,7 +224,7 @@ Resources:
   LeaderGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
-      Description: Administratively assigned Save2Serve leaders.
+      Description: Administratively assigned Saved2Serve leaders.
       GroupName: Leaders
       Precedence: 10
       UserPoolId: !Ref LeaderUserPool
@@ -233,7 +233,7 @@ Resources:
     Type: AWS::Cognito::UserPoolResourceServer
     Properties:
       Identifier: saved2serve
-      Name: Save2Serve leader API
+      Name: Saved2Serve leader API
       Scopes:
         - ScopeName: leader.read
           ScopeDescription: Read the private leader engagement queue.
