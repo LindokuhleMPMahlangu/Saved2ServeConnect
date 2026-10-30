@@ -86,6 +86,12 @@ export function getRegistrationMessage(status) {
   return "We couldn't send your registration just now. Please try again shortly.";
 }
 
+export function getInterestSuccessMessage(demoMode = false) {
+  return demoMode
+    ? "Demo only: the registration was validated and discarded. No information was saved."
+    : "Thanks for reaching out. Your interest has been received.";
+}
+
 export async function submitInterest(payload, {
   apiBaseUrl = "",
   fetchImpl = globalThis.fetch
@@ -261,6 +267,11 @@ function initializeInterestForm() {
   const email = form.elements.namedItem("email");
   const areaCode = form.elements.namedItem("areaCode");
   const consent = form.elements.namedItem("consent");
+  const demoMode = globalThis.SAVED2SERVE_CONFIG?.demoMode === true;
+  const demoBanner = document.querySelector("#demo-mode-banner");
+  if (demoMode && demoBanner) {
+    demoBanner.hidden = false;
+  }
   const campaignId = getCampaignId(globalThis.location?.search ?? "");
   let previousPayload = "";
   let idempotencyKey = "";
@@ -329,8 +340,8 @@ function initializeInterestForm() {
       clearFieldErrors();
       previousPayload = "";
       idempotencyKey = "";
-      showStatus(status, "success", "Thanks for reaching out. Your interest has been received.");
-    } catch {
+      showStatus(status, "success", getInterestSuccessMessage(demoMode));
+    } catch (error) {
       const message = error instanceof RegistrationError
         ? error.message
         : "We couldn't connect just now. Your details are still here—please check your connection and try again.";
