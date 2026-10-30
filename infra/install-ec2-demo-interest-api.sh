@@ -75,6 +75,7 @@ UNIT
 
 cat > /etc/nginx/conf.d/saved2serve.conf <<'NGINX'
 limit_req_zone $binary_remote_addr zone=interest_demo:10m rate=5r/m;
+limit_req_zone $binary_remote_addr zone=church_demo:10m rate=1r/s;
 
 server {
     listen 80 default_server;
@@ -90,6 +91,13 @@ server {
 
     location = /v1/interests {
         limit_req zone=interest_demo burst=3 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:8081;
+        proxy_set_header Host $host;
+    }
+
+    location = /v1/churches {
+        limit_req zone=church_demo burst=1 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:8081;
         proxy_set_header Host $host;
