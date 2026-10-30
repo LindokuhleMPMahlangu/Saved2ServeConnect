@@ -37,8 +37,10 @@ EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 ALLOWED_SOURCES = {"landing-page", "campaign-qr:community-outreach"}
 LOGGER = logging.getLogger("saved2serve.demo")
 GEOCODE_LOCK = threading.Lock()
+GOOGLE_REQUEST_LOCK = threading.Lock()
 GEOCODE_CACHE = {}
 LAST_NOMINATIM_REQUEST = 0.0
+LAST_GOOGLE_REQUEST = 0.0
 
 
 class DemoIdempotencyConflict(Exception):
@@ -153,11 +155,6 @@ def _find_area_location(area):
     global LAST_NOMINATIM_REQUEST
 
     cache_key = area.casefold()
-    with GEOCODE_LOCK:
-        cached = GEOCODE_CACHE.get(cache_key)
-        if cached and time.monotonic() - cached[0] < GEOCODE_CACHE_SECONDS:
-            return cached[1]
-
     params = {
         "format": "jsonv2",
         "limit": "1",
@@ -176,10 +173,22 @@ def _find_area_location(area):
         delay = 1.0 - (time.monotonic() - LAST_NOMINATIM_REQUEST)
         if delay > 0:
             time.sleep(delay)
-        results = _fetch_map_json(f"{NOMINATIM_URL}?{urllib.parse.urlencode(params)}")
+        try:
+            results = _fetch_map_json(f"{NOMINATIM_URL}?{urllib.parse.urlencode(params)}")
+        except urllib.error.HTTPError as error:
+            LOGGER.error("DEMO_CHURCH_LOOKUP_FAILED provider=nominatim status=%d", error.code)
+            raise ChurchLookupError("Area lookup service is unavailable.") from error
+        except (urllib.error.URLError, TimeoutError) as error:
+            LOGGER.error(
+                "DEMO_CHURCH_LOOKUP_FAILED provider=nominatim type=%s",
+                type(error).__name__,
+            )
+            raise ChurchLookupError("Area lookup service is unavailable.") from error
         LAST_NOMINATIM_REQUEST = time.monotonic()
 
     if not isinstance(results, list) or not results:
+        with GEOCODE_LOCK:
+            GEOCODE_CACHE[cache_key] = (time.monotonic(), None)
         return None
     try:
         latitude = float(results[0]["lat"])
@@ -189,10 +198,11 @@ def _find_area_location(area):
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         raise ChurchLookupError("Map service returned an invalid location.")
     location = (latitude, longitude)
-    GEOCODE_CACHE[cache_key] = (time.monotonic(), location)
-    if len(GEOCODE_CACHE) > GEOCODE_CACHE_LIMIT:
-        oldest_key = min(key for key in GEOCODE_CACHE if GEOCODE_CACHE[key][0])
-        del GEOCODE_CACHE[oldest_key]
+    with GEOCODE_LOCK:
+        GEOCODE_CACHE[cache_key] = (time.monotonic(), location)
+        if len(GEOCODE_CACHE) > GEOCODE_CACHE_LIMIT:
+            oldest_key = min(GEOCODE_CACHE, key=lambda key: GEOCODE_CACHE[key][0])
+            del GEOCODE_CACHE[oldest_key]
     return location
 
 
@@ -217,6 +227,8 @@ def _google_maps_url(place_id):
 
 
 def _query_churches(latitude, longitude):
+    global LAST_GOOGLE_REQUEST
+
     api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
     if not api_key:
         raise ChurchLookupError("Google Maps API key is not configured.")
@@ -236,18 +248,33 @@ def _query_churches(latitude, longitude):
         "regionCode": "ZA",
     }
     data = json.dumps(request_body).encode("utf-8")
-    response = _fetch_map_json(
-        GOOGLE_PLACES_URL,
-        data,
-        {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": api_key,
-            "X-Goog-FieldMask": (
-                "places.id,places.displayName,places.formattedAddress,"
-                "places.googleMapsUri,places.location"
-            ),
-        },
-    )
+    with GOOGLE_REQUEST_LOCK:
+        delay = 1.0 - (time.monotonic() - LAST_GOOGLE_REQUEST)
+        if delay > 0:
+            time.sleep(delay)
+        try:
+            response = _fetch_map_json(
+                GOOGLE_PLACES_URL,
+                data,
+                {
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": api_key,
+                    "X-Goog-FieldMask": (
+                        "places.id,places.displayName,places.formattedAddress,"
+                        "places.location"
+                    ),
+                },
+            )
+        except urllib.error.HTTPError as error:
+            LOGGER.error("DEMO_CHURCH_LOOKUP_FAILED provider=google_places status=%d", error.code)
+            raise ChurchLookupError("Google Maps search is unavailable.") from error
+        except (urllib.error.URLError, TimeoutError) as error:
+            LOGGER.error(
+                "DEMO_CHURCH_LOOKUP_FAILED provider=google_places type=%s",
+                type(error).__name__,
+            )
+            raise ChurchLookupError("Google Maps search is unavailable.") from error
+        LAST_GOOGLE_REQUEST = time.monotonic()
     if not isinstance(response, dict) or not isinstance(response.get("places", []), list):
         raise ChurchLookupError("Google Maps returned an invalid church list.")
 
@@ -273,16 +300,13 @@ def _query_churches(latitude, longitude):
         if (_distance_meters((latitude, longitude), place_location)
                 > CHURCH_SEARCH_RADIUS_METERS):
             continue
-        map_url = place.get("googleMapsUri")
-        if not isinstance(map_url, str) or not map_url.startswith("https://www.google.com/maps/"):
-            map_url = _google_maps_url(place_id)
         address = place.get("formattedAddress")
         churches.append({
             "churchId": f"google:{place_id}",
             "displayName": display_name["text"].strip()[:160],
             "publicWebsite": "",
             "publicAddress": address.strip()[:240] if isinstance(address, str) else "",
-            "mapUrl": map_url,
+            "mapUrl": _google_maps_url(place_id),
         })
     return churches
 
@@ -325,10 +349,7 @@ class DemoInterestHandler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "Enter a valid area or postcode."})
                 return
             except Exception as error:
-                LOGGER.error(
-                    "DEMO_CHURCH_LOOKUP_FAILED type=%s",
-                    type(error).__name__,
-                )
+                LOGGER.error("DEMO_CHURCH_LOOKUP_FAILED type=%s", type(error).__name__)
                 self.send_json(503, {"error": "The map search service is unavailable."})
                 return
             self.send_json(200, {"churches": churches, "source": "Google Maps"})
