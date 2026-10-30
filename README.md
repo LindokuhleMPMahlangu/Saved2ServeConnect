@@ -89,7 +89,7 @@ Interest and engagement submissions accept a separate optional `followUpConsent`
 
 ## Day 13 deliverables included
 
-The responsive static landing page and interest form are in `web/`. The production form submits to `POST /v1/interests` and requires the HTTPS API base URL in `web/config.js`. For an EC2-only demonstration, `infra/install-ec2-demo-interest-api.sh` installs a rate-limited, non-persistent local endpoint; the page identifies demo mode and tells visitors that submitted data is discarded. Use fictional values only over HTTP. See [docs/day-13-public-landing-and-interest-form.md](docs/day-13-public-landing-and-interest-form.md) for EC2 setup and verification.
+The responsive static landing page and interest form are in `web/`. The production form submits to `POST /v1/interests` and requires the HTTPS API base URL in `web/config.js`. For an EC2-only demonstration, `infra/install-ec2-demo-interest-api.sh` installs a rate-limited endpoint that saves up to 100 fictional registrations in a private local SQLite database. This is not the production Lambda/DynamoDB service; use fictional values only. See [docs/day-13-public-landing-and-interest-form.md](docs/day-13-public-landing-and-interest-form.md) for EC2 setup and verification.
 
 ## Day 14 deliverables included
 
