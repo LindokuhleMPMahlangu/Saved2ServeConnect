@@ -2,6 +2,7 @@ import http.client
 import json
 import threading
 import unittest
+import urllib.parse
 from http.server import ThreadingHTTPServer
 
 from infra.ec2_demo_interest_api import (
@@ -161,7 +162,8 @@ class DemoInterestApiTests(unittest.TestCase):
         self.assertEqual(fetch.call_count, 2)
         self.assertIn("postalcode=2001", fetch.call_args_list[0].args[0])
         self.assertIn("countrycodes=za", fetch.call_args_list[0].args[0])
-        self.assertIn('["religion"="christian"]', fetch.call_args_list[1].args[1].decode("utf-8"))
+        overpass_data = urllib.parse.parse_qs(fetch.call_args_list[1].args[1].decode("utf-8"))
+        self.assertIn('["religion"="christian"]', overpass_data["data"][0])
 
     def test_church_lookup_rejects_full_addresses_and_unbounded_queries(self):
         for area in ["", "1 Example Street, Johannesburg", "A" * 25, "2001\t2010"]:
