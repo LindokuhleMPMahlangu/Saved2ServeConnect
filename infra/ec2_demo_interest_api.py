@@ -189,6 +189,9 @@ def _find_area_location(area):
     if not isinstance(results, list) or not results:
         with GEOCODE_LOCK:
             GEOCODE_CACHE[cache_key] = (time.monotonic(), None)
+            if len(GEOCODE_CACHE) > GEOCODE_CACHE_LIMIT:
+                oldest_key = min(GEOCODE_CACHE, key=lambda key: GEOCODE_CACHE[key][0])
+                del GEOCODE_CACHE[oldest_key]
         return None
     try:
         latitude = float(results[0]["lat"])
