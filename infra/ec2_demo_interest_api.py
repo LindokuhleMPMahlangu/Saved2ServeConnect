@@ -3,6 +3,7 @@ import json
 import hashlib
 import logging
 import os
+import re
 import threading
 import time
 import urllib.parse
@@ -173,9 +174,7 @@ def _query_churches(area):
                 {
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": api_key,
-                    "X-Goog-FieldMask": (
-                        "places.id,places.displayName,places.formattedAddress,"
-                                ),
+                    "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress",
                 },
             )
         except urllib.error.HTTPError as error:
