@@ -150,7 +150,7 @@ The repeatable SAM/CloudFormation stack for the implemented API, Java 21 Lambda 
 
 ## EC2 map-based church lookup demo
 
-The EC2 demo serves `GET /v1/churches` through its existing API process and queries OpenStreetMap's Nominatim and Overpass services for named Christian places of worship within 5 km of a South African postcode or Johannesburg area. Results are map data, not Save2Serve-approved listings; the service caches responses for one hour and limits Nominatim requests to at most one per second. The page includes OpenStreetMap/ODbL attribution and warns visitors to verify results. This EC2 demo is separate from the SAM API's curated, approved directory. Setup, provider usage limits, and validation are documented in [docs/ec2-openstreetmap-church-lookup.md](docs/ec2-openstreetmap-church-lookup.md).
+The EC2 demo serves `GET /v1/churches` through its existing API process and queries OpenStreetMap's Nominatim and Overpass services for named Christian places of worship within 5 km of a South African postcode or Johannesburg area. Results are map data, not Save2Serve-approved listings; the service caches responses for one hour, limits Nominatim requests to at most one per second, and can fail over to a secondary Overpass instance when the primary is unavailable. The page includes OpenStreetMap/ODbL attribution and warns visitors to verify results. This EC2 demo is separate from the SAM API's curated, approved directory. Setup, provider usage limits, and validation are documented in [docs/ec2-openstreetmap-church-lookup.md](docs/ec2-openstreetmap-church-lookup.md).
 
 ## Privacy, retention, threat, and release decisions
 
