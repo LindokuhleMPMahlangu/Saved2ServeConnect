@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Account-level monthly AWS cost budget and SNS notifications for Save2Serve.
+Description: Account-level monthly AWS cost budget and SNS notifications for Saved2Serve.
 
 Parameters:
   MonthlyBudgetAmount:
