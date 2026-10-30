@@ -22,7 +22,7 @@ DynamoDB registration table.
   values.
 
 Church listings and their details can be incomplete or out of date. They are
-not verified or endorsed by Save2Serve; visitors should confirm details before
+not verified or endorsed by Saved2Serve; visitors should confirm details before
 travelling or contacting a listed church.
 
 ## Google Cloud setup
