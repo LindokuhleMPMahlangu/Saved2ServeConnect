@@ -77,28 +77,48 @@ API's CORS allowlist before collecting real submissions.
 
 After connecting to the instance with EC2 Instance Connect, the optional
 `infra/install-ec2-demo-interest-api.sh` installer adds a small local Python
-endpoint behind Nginx. Push the updated repository to `main`, then run:
+endpoint behind Nginx that writes to DynamoDB using the EC2 instance profile.
+Before installing it:
+
+1. In `eu-north-1`, create a DynamoDB table, for example
+   `Saved2ServeDemoRegistrations`, with partition key `registrationId` (String),
+   no sort key, and on-demand capacity.
+2. Create an EC2 IAM role and attach this least-privilege inline policy,
+   replacing the account ID with your AWS account ID:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Action": ["dynamodb:PutItem", "dynamodb:GetItem"],
+       "Resource": "arn:aws:dynamodb:eu-north-1:ACCOUNT_ID:table/Saved2ServeDemoRegistrations"
+     }]
+   }
+   ```
+
+   Set the role's trusted entity to **AWS service → EC2**, create the role, then
+   attach it to the running instance through **EC2 → Actions → Security →
+   Modify IAM role**. Never put access keys in the instance or repository.
+3. Push the updated repository to `main`. In EC2 Instance Connect, run:
 
 ```bash
 curl --fail --location --silent --show-error \
   https://raw.githubusercontent.com/LindokuhleMPMahlangu/Saved2ServeConnect/main/infra/install-ec2-demo-interest-api.sh \
   --output /tmp/install-ec2-demo-interest-api.sh
-sudo bash /tmp/install-ec2-demo-interest-api.sh
+sudo bash /tmp/install-ec2-demo-interest-api.sh Saved2ServeDemoRegistrations eu-north-1
 ```
 
 The public form displays a demo-only warning. The endpoint validates and saves
-up to 100 fictional registrations in a private SQLite file outside the web
-root, returns a generated registration ID, and does not log request fields.
-The data stays on this EC2 instance and is not encrypted by the app. A
-Cloudflare Quick Tunnel provides temporary HTTPS to the browser but is not a
-production hosting or data-protection setup. Do not submit real personal
-information. This is not the production Lambda/DynamoDB service.
+fictional registrations to the private DynamoDB table, returns a generated
+registration ID, and does not log request fields. DynamoDB encrypts stored data
+at rest by default. The HTTPS URL provided by a Cloudflare Quick Tunnel is
+temporary and is not a production hosting or data-protection setup. Do not
+submit real personal information. This is not the production Lambda/DynamoDB
+service.
 
-To display saved demo rows in the EC2 terminal, run:
-
-```bash
-sudo python3 /opt/saved2serve/show-ec2-demo-registrations.py
-```
+To view saved demo rows, open **DynamoDB → Tables → Saved2ServeDemoRegistrations
+→ Explore table items** in the AWS Console.
 
 After the installer succeeds, remove the temporary SSH security-group rule
 used for EC2 Instance Connect when you disconnect. To stop the temporary
