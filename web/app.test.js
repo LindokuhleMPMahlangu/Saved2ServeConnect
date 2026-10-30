@@ -9,6 +9,7 @@ import {
   fetchChurches,
   fetchDevotions,
   getCampaignId,
+  getInterestSuccessMessage,
   getRegistrationMessage,
   isApprovedVideoUrl,
   projectPublicChurches,
@@ -35,6 +36,12 @@ test("validates the required registration fields without requiring optional foll
   assert.equal(validateInterestInput({ ...validValues, areaCode: "" }),
     "Please enter your area or postcode.");
   assert.match(validateInterestInput({ ...validValues, consent: false }), /required registration consent/);
+});
+
+test("demo registration confirmation clearly says the submission was not saved", () => {
+  assert.match(getInterestSuccessMessage(true), /validated and discarded/);
+  assert.match(getInterestSuccessMessage(true), /No information was saved/);
+  assert.match(getInterestSuccessMessage(false), /interest has been received/);
 });
 
 test("creates only allowlisted form fields and keeps follow-up consent separate", () => {
