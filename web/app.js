@@ -426,7 +426,7 @@ function renderChurches(container, churches) {
   container.className = `discovery-results ${churches.length ? "discovery-loaded" : "discovery-empty"}`;
   container.setAttribute("aria-busy", "false");
   if (churches.length === 0) {
-    setDiscoveryState(container, "empty", "No churches were found in OpenStreetMap near that area.");
+    setDiscoveryState(container, "empty", "No churches were found near that area.");
     return;
   }
   const cards = document.createElement("div");
@@ -457,8 +457,8 @@ function renderChurches(container, churches) {
       mapLink.href = church.mapUrl;
       mapLink.target = "_blank";
       mapLink.rel = "noopener noreferrer";
-      mapLink.textContent = "View on OpenStreetMap";
-      mapLink.setAttribute("aria-label", `View ${church.displayName} on OpenStreetMap (opens in a new tab)`);
+      mapLink.textContent = "View on Google Maps";
+      mapLink.setAttribute("aria-label", `View ${church.displayName} on Google Maps (opens in a new tab)`);
       card.append(mapLink);
     }
     cards.append(card);
@@ -510,7 +510,7 @@ function initializeChurchDiscovery() {
       activeController.abort();
     }
     activeController = new AbortController();
-    setDiscoveryState(results, "loading", "Searching OpenStreetMap for nearby churches…");
+    setDiscoveryState(results, "loading", "Searching Google Maps for nearby churches…");
     try {
       const churches = await fetchChurches(areaCode, {
         apiBaseUrl: globalThis.SAVED2SERVE_CONFIG?.apiBaseUrl ?? "",
