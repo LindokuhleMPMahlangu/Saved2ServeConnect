@@ -63,7 +63,6 @@ Type=simple
 ExecStart=/usr/bin/python3 /opt/saved2serve/ec2_demo_interest_api.py
 Environment=SAVED2SERVE_DEMO_TABLE_NAME=$table_name
 Environment=AWS_REGION=$region
-Environment=SAVED2SERVE_NOMINATIM_URL=https://nominatim.openstreetmap.org/search
 EnvironmentFile=-/etc/saved2serve-demo-api.env
 Restart=on-failure
 RestartSec=3
