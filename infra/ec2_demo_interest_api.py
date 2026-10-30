@@ -2,6 +2,7 @@
 import json
 import re
 import hashlib
+import logging
 import os
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +21,7 @@ ALLOWED_FIELDS = {
 }
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 ALLOWED_SOURCES = {"landing-page", "campaign-qr:community-outreach"}
+LOGGER = logging.getLogger("saved2serve.demo")
 
 
 class DemoIdempotencyConflict(Exception):
@@ -155,7 +157,12 @@ class DemoInterestHandler(BaseHTTPRequestHandler):
         except DemoIdempotencyConflict:
             self.send_json(409, {"error": "This demo request key was already used with different details."})
             return
-        except Exception:
+        except Exception as error:
+            error_code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            LOGGER.error(
+                "DEMO_DYNAMODB_WRITE_FAILED code=%s",
+                error_code or type(error).__name__,
+            )
             self.send_json(503, {"error": "The demo storage service is unavailable."})
             return
 
