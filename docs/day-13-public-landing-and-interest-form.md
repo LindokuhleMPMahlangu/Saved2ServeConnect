@@ -73,7 +73,7 @@ submissions and church/devotion lookups have no backend, and leader sign-in
 requires the separate API and Cognito deployment. Use HTTPS and configure the
 API's CORS allowlist before collecting real submissions.
 
-### Non-persistent interest-flow demonstration
+### Fictional-data interest-flow demonstration
 
 After connecting to the instance with EC2 Instance Connect, the optional
 `infra/install-ec2-demo-interest-api.sh` installer adds a small local Python
@@ -86,12 +86,24 @@ curl --fail --location --silent --show-error \
 sudo bash /tmp/install-ec2-demo-interest-api.sh
 ```
 
-The public form displays a demo-only warning. It validates fictional details
-and responds that they were discarded; the endpoint does not persist or log
-request fields and is rate limited. This is an EC2-hosted demonstration
-endpoint, not the production Lambda/DynamoDB service. It is still HTTP, so use
-fictional values only. After the installer succeeds, remove the temporary SSH
-security-group rule used for EC2 Instance Connect when you disconnect.
+The public form displays a demo-only warning. The endpoint validates and saves
+up to 100 fictional registrations in a private SQLite file outside the web
+root, returns a generated registration ID, and does not log request fields.
+The data stays on this EC2 instance and is not encrypted by the app. A
+Cloudflare Quick Tunnel provides temporary HTTPS to the browser but is not a
+production hosting or data-protection setup. Do not submit real personal
+information. This is not the production Lambda/DynamoDB service.
+
+To display saved demo rows in the EC2 terminal, run:
+
+```bash
+sudo python3 /opt/saved2serve/show-ec2-demo-registrations.py
+```
+
+After the installer succeeds, remove the temporary SSH security-group rule
+used for EC2 Instance Connect when you disconnect. To stop the temporary
+Cloudflare URL, stop the `cloudflared` process; the EC2 demo remains available
+at its HTTP public IP.
 
 If first boot fails, inspect **Actions → Monitor and troubleshoot → Get system
 log**. User data is normally a one-time startup script. After correcting a
