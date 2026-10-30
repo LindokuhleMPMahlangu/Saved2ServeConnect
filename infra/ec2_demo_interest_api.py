@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
+import os
 import json
 import re
+import sqlite3
+import uuid
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 MAX_BODY_BYTES = 16 * 1024
+MAX_DEMO_RECORDS = 100
+DEFAULT_DATABASE_PATH = "/var/lib/saved2serve-demo/registrations.sqlite3"
 ALLOWED_FIELDS = {
     "idempotencyKey",
     "name",
@@ -17,6 +23,10 @@ ALLOWED_FIELDS = {
 }
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 ALLOWED_SOURCES = {"landing-page", "campaign-qr:community-outreach"}
+
+
+class DemoCapacityReached(Exception):
+    pass
 
 
 def validate_registration(payload):
@@ -49,6 +59,71 @@ def validate_registration(payload):
     return True
 
 
+def save_registration(payload, database_path=None):
+    database_path = database_path or os.environ.get(
+        "SAVED2SERVE_DEMO_DB", DEFAULT_DATABASE_PATH
+    )
+    database_directory = os.path.dirname(database_path)
+    os.makedirs(database_directory, mode=0o700, exist_ok=True)
+    if os.name == "posix":
+        os.chmod(database_directory, 0o700)
+
+    registration_id = uuid.uuid4().hex
+    received_at = datetime.now(timezone.utc).isoformat()
+    connection = sqlite3.connect(database_path, timeout=5)
+    try:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS demo_registrations (
+                registration_id TEXT PRIMARY KEY,
+                received_at TEXT NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone TEXT,
+                area_code TEXT NOT NULL,
+                source TEXT NOT NULL,
+                follow_up_consent INTEGER NOT NULL,
+                consented_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute("BEGIN IMMEDIATE")
+        count = connection.execute(
+            "SELECT COUNT(*) FROM demo_registrations"
+        ).fetchone()[0]
+        if count >= MAX_DEMO_RECORDS:
+            raise DemoCapacityReached
+        connection.execute(
+            """
+            INSERT INTO demo_registrations (
+                registration_id, received_at, name, email, phone, area_code,
+                source, follow_up_consent, consented_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                registration_id,
+                received_at,
+                payload["name"].strip(),
+                payload["email"].strip(),
+                (payload.get("phone") or "").strip() or None,
+                payload["areaCode"].strip(),
+                payload["source"],
+                int(payload.get("followUpConsent", False)),
+                received_at,
+            ),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+    if os.name == "posix":
+        os.chmod(database_path, 0o600)
+    return registration_id
+
+
 class DemoInterestHandler(BaseHTTPRequestHandler):
     def send_json(self, status, response):
         body = json.dumps(response).encode("utf-8")
@@ -62,7 +137,7 @@ class DemoInterestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/healthz":
-            self.send_json(200, {"status": "ok", "mode": "demo"})
+            self.send_json(200, {"status": "ok", "mode": "demo-persistent"})
             return
         self.send_json(404, {"error": "Not found."})
 
@@ -90,12 +165,19 @@ class DemoInterestHandler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "Please review the required registration fields."})
             return
 
+        try:
+            registration_id = save_registration(payload)
+        except DemoCapacityReached:
+            self.send_json(429, {"error": "The demo registration limit has been reached."})
+            return
+
         self.send_json(
-            200,
+            201,
             {
                 "mode": "demo",
-                "saved": False,
-                "message": "Demo only: request validated and discarded; no information was saved.",
+                "saved": True,
+                "registrationId": registration_id,
+                "message": "Demo only: fictional registration saved locally on this EC2 instance.",
             },
         )
 
