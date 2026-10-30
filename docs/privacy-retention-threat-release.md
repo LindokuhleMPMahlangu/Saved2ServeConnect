@@ -1,6 +1,6 @@
 # Privacy, retention, threat, and release decisions
 
-This document captures the key product decisions that keep the MVP aligned with Save2Serve privacy expectations. The detailed rationale and full project context are summarized in the README.
+This document captures the key product decisions that keep the MVP aligned with Saved2Serve privacy expectations. The detailed rationale and full project context are summarized in the README.
 
 ## Decision summary
 
