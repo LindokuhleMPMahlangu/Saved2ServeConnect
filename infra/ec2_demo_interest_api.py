@@ -220,7 +220,7 @@ def _distance_meters(first, second):
         sin(latitude_delta / 2) ** 2
         + cos(latitude1) * cos(latitude2) * sin(longitude_delta / 2) ** 2
     )
-    return 6_371_000 * 2 * asin(sqrt(haversine))
+    return 6_371_000 * 2 * asin(sqrt(min(1.0, haversine)))
 
 
 def _google_maps_url(place_id):
@@ -241,7 +241,7 @@ def _query_churches(latitude, longitude):
         "includedType": "church",
         "strictTypeFiltering": True,
         "maxResultCount": CHURCH_RESULT_LIMIT,
-        "locationBias": {
+        "locationRestriction": {
             "circle": {
                 "center": {"latitude": latitude, "longitude": longitude},
                 "radius": CHURCH_SEARCH_RADIUS_METERS,
@@ -300,13 +300,19 @@ def _query_churches(latitude, longitude):
             )
         except (KeyError, TypeError, ValueError):
             continue
+        if (not -90 <= place_location[0] <= 90
+                or not -180 <= place_location[1] <= 180):
+            continue
         if (_distance_meters((latitude, longitude), place_location)
                 > CHURCH_SEARCH_RADIUS_METERS):
             continue
         address = place.get("formattedAddress")
+        name = display_name["text"].strip()
+        if not name:
+            continue
         churches.append({
             "churchId": f"google:{place_id}",
-            "displayName": display_name["text"].strip()[:160],
+            "displayName": name[:160],
             "publicWebsite": "",
             "publicAddress": address.strip()[:240] if isinstance(address, str) else "",
             "mapUrl": _google_maps_url(place_id),
