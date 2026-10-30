@@ -15,14 +15,20 @@ unzip -q /tmp/saved2serve-main.zip -d /tmp/saved2serve-source
 
 release_dir=/tmp/saved2serve-source/Saved2ServeConnect-main
 install -d -m 0755 /var/www/saved2serve /opt/saved2serve
+install -d -o nginx -g nginx -m 0700 /var/lib/saved2serve-demo
 cp -a "$release_dir/web/." /var/www/saved2serve/
 install -m 0644 "$release_dir/infra/ec2_demo_interest_api.py" \
   /opt/saved2serve/ec2_demo_interest_api.py
+install -m 0644 "$release_dir/infra/show-ec2-demo-registrations.py" \
+  /opt/saved2serve/show-ec2-demo-registrations.py
+
+rm -f /etc/nginx/conf.d/default.conf
 
 cat > /var/www/saved2serve/config.js <<'CONFIG'
 window.SAVED2SERVE_CONFIG = Object.freeze({
   apiBaseUrl: "",
   demoMode: true,
+  demoPersistence: true,
   bedrockDraftsEnabled: false,
   churchesPath: "/v1/churches",
   devotionsPath: "/v1/devotions",
@@ -38,12 +44,13 @@ CONFIG
 
 cat > /etc/systemd/system/saved2serve-demo-api.service <<'UNIT'
 [Unit]
-Description=Save2Serve non-persistent demonstration API
+Description=Save2Serve fictional-data demonstration API
 After=network.target
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/python3 /opt/saved2serve/ec2_demo_interest_api.py
+Environment=SAVED2SERVE_DEMO_DB=/var/lib/saved2serve-demo/registrations.sqlite3
 Restart=on-failure
 RestartSec=3
 User=nginx
@@ -91,7 +98,8 @@ NGINX
 
 nginx -t
 systemctl daemon-reload
-systemctl enable --now saved2serve-demo-api
+systemctl enable saved2serve-demo-api
+systemctl restart saved2serve-demo-api
 systemctl reload nginx
 curl --fail --silent --show-error http://127.0.0.1/healthz >/dev/null
-echo "Demo API installed. It validates and discards requests; it does not save submissions."
+echo "Demo API installed. Fictional registrations are saved locally on this EC2 instance."
