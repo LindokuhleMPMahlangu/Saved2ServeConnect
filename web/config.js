@@ -1,5 +1,6 @@
 window.SAVED2SERVE_CONFIG = Object.freeze({
   apiBaseUrl: "",
+  demoMode: false,
   bedrockDraftsEnabled: false,
   churchesPath: "/v1/churches",
   devotionsPath: "/v1/devotions",
