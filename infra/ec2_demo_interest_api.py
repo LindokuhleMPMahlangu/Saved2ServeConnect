@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import json
-import re
 import hashlib
 import logging
 import os
@@ -14,14 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 MAX_BODY_BYTES = 16 * 1024
-GEOCODE_CACHE_SECONDS = 3600
-GEOCODE_CACHE_LIMIT = 128
-CHURCH_SEARCH_RADIUS_METERS = 5000
 CHURCH_RESULT_LIMIT = 20
-NOMINATIM_URL = os.environ.get(
-    "SAVED2SERVE_NOMINATIM_URL",
-    "https://nominatim.openstreetmap.org/search",
-)
 GOOGLE_PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
 ALLOWED_FIELDS = {
     "idempotencyKey",
@@ -36,10 +28,7 @@ ALLOWED_FIELDS = {
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 ALLOWED_SOURCES = {"landing-page", "campaign-qr:community-outreach"}
 LOGGER = logging.getLogger("saved2serve.demo")
-GEOCODE_LOCK = threading.Lock()
 GOOGLE_REQUEST_LOCK = threading.Lock()
-GEOCODE_CACHE = {}
-LAST_NOMINATIM_REQUEST = 0.0
 LAST_GOOGLE_REQUEST = 0.0
 
 
@@ -151,85 +140,13 @@ def _fetch_map_json(url, data=None, headers=None):
         return json.loads(response.read())
 
 
-def _find_area_location(area):
-    global LAST_NOMINATIM_REQUEST
-
-    cache_key = area.casefold()
-    params = {
-        "format": "jsonv2",
-        "limit": "1",
-        "countrycodes": "za",
-    }
-    if re.fullmatch(r"\d{4}", area):
-        params["postalcode"] = area
-        params["country"] = "South Africa"
-    else:
-        params["q"] = f"{area}, Johannesburg, South Africa"
-
-    with GEOCODE_LOCK:
-        cached = GEOCODE_CACHE.get(cache_key)
-        if cached and time.monotonic() - cached[0] < GEOCODE_CACHE_SECONDS:
-            return cached[1]
-        delay = 1.0 - (time.monotonic() - LAST_NOMINATIM_REQUEST)
-        if delay > 0:
-            time.sleep(delay)
-        try:
-            results = _fetch_map_json(f"{NOMINATIM_URL}?{urllib.parse.urlencode(params)}")
-        except urllib.error.HTTPError as error:
-            LOGGER.error("DEMO_CHURCH_LOOKUP_FAILED provider=nominatim status=%d", error.code)
-            raise ChurchLookupError("Area lookup service is unavailable.") from error
-        except (urllib.error.URLError, TimeoutError) as error:
-            LOGGER.error(
-                "DEMO_CHURCH_LOOKUP_FAILED provider=nominatim type=%s",
-                type(error).__name__,
-            )
-            raise ChurchLookupError("Area lookup service is unavailable.") from error
-        LAST_NOMINATIM_REQUEST = time.monotonic()
-
-    if not isinstance(results, list) or not results:
-        with GEOCODE_LOCK:
-            GEOCODE_CACHE[cache_key] = (time.monotonic(), None)
-            if len(GEOCODE_CACHE) > GEOCODE_CACHE_LIMIT:
-                oldest_key = min(GEOCODE_CACHE, key=lambda key: GEOCODE_CACHE[key][0])
-                del GEOCODE_CACHE[oldest_key]
-        return None
-    try:
-        latitude = float(results[0]["lat"])
-        longitude = float(results[0]["lon"])
-    except (KeyError, TypeError, ValueError):
-        raise ChurchLookupError("Map service returned an invalid location.")
-    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
-        raise ChurchLookupError("Map service returned an invalid location.")
-    location = (latitude, longitude)
-    with GEOCODE_LOCK:
-        GEOCODE_CACHE[cache_key] = (time.monotonic(), location)
-        if len(GEOCODE_CACHE) > GEOCODE_CACHE_LIMIT:
-            oldest_key = min(GEOCODE_CACHE, key=lambda key: GEOCODE_CACHE[key][0])
-            del GEOCODE_CACHE[oldest_key]
-    return location
-
-
-def _distance_meters(first, second):
-    from math import asin, cos, radians, sin, sqrt
-
-    latitude1, longitude1 = map(radians, first)
-    latitude2, longitude2 = map(radians, second)
-    latitude_delta = latitude2 - latitude1
-    longitude_delta = longitude2 - longitude1
-    haversine = (
-        sin(latitude_delta / 2) ** 2
-        + cos(latitude1) * cos(latitude2) * sin(longitude_delta / 2) ** 2
-    )
-    return 6_371_000 * 2 * asin(sqrt(min(1.0, haversine)))
-
-
 def _google_maps_url(place_id):
     return "https://www.google.com/maps/search/?api=1&query_place_id=" + urllib.parse.quote(
         place_id, safe=""
     )
 
 
-def _query_churches(latitude, longitude):
+def _query_churches(area):
     global LAST_GOOGLE_REQUEST
 
     api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
@@ -237,16 +154,10 @@ def _query_churches(latitude, longitude):
         raise ChurchLookupError("Google Maps API key is not configured.")
 
     request_body = {
-        "textQuery": "church",
+        "textQuery": f"churches near {area}, Johannesburg, South Africa",
         "includedType": "church",
         "strictTypeFiltering": True,
         "maxResultCount": CHURCH_RESULT_LIMIT,
-        "locationRestriction": {
-            "circle": {
-                "center": {"latitude": latitude, "longitude": longitude},
-                "radius": CHURCH_SEARCH_RADIUS_METERS,
-            }
-        },
         "languageCode": "en",
         "regionCode": "ZA",
     }
@@ -264,8 +175,7 @@ def _query_churches(latitude, longitude):
                     "X-Goog-Api-Key": api_key,
                     "X-Goog-FieldMask": (
                         "places.id,places.displayName,places.formattedAddress,"
-                        "places.location"
-                    ),
+                                ),
                 },
             )
         except urllib.error.HTTPError as error:
@@ -287,24 +197,9 @@ def _query_churches(latitude, longitude):
             continue
         place_id = place.get("id")
         display_name = place.get("displayName")
-        location = place.get("location")
         if (not isinstance(place_id, str) or not place_id
                 or not isinstance(display_name, dict)
-                or not isinstance(display_name.get("text"), str)
-                or not isinstance(location, dict)):
-            continue
-        try:
-            place_location = (
-                float(location["latitude"]),
-                float(location["longitude"]),
-            )
-        except (KeyError, TypeError, ValueError):
-            continue
-        if (not -90 <= place_location[0] <= 90
-                or not -180 <= place_location[1] <= 180):
-            continue
-        if (_distance_meters((latitude, longitude), place_location)
-                > CHURCH_SEARCH_RADIUS_METERS):
+                or not isinstance(display_name.get("text"), str)):
             continue
         address = place.get("formattedAddress")
         name = display_name["text"].strip()
@@ -327,8 +222,7 @@ def find_churches(area):
     if (not area or len(area) > 24
             or any(not (character.isalnum() or character in " -'.") for character in area)):
         raise ValueError("Enter an area name or postcode using letters and numbers.")
-    location = _find_area_location(area)
-    return [] if location is None else _query_churches(*location)
+    return _query_churches(area)
 
 
 class DemoInterestHandler(BaseHTTPRequestHandler):
