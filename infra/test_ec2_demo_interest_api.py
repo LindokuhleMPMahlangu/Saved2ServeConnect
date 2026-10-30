@@ -171,7 +171,7 @@ class DemoInterestApiTests(unittest.TestCase):
         self.assertEqual(request_url, ec2_demo_interest_api.GOOGLE_PLACES_URL)
         request_body = json.loads(request_data)
         self.assertEqual(request_body["includedType"], "church")
-        self.assertEqual(request_body["locationBias"]["circle"]["radius"], 5000)
+        self.assertEqual(request_body["locationRestriction"]["circle"]["radius"], 5000)
         self.assertEqual(headers["X-Goog-Api-Key"], "test-key")
         self.assertNotIn("places.websiteUri", headers["X-Goog-FieldMask"])
 
@@ -220,7 +220,7 @@ class DemoInterestApiTests(unittest.TestCase):
         self.assertEqual(
             json.loads(body),
             {
-                "churches": [{"churchId": "osm:node/123", "displayName": "Map Church"}],
+                "churches": [{"churchId": "google:place-123", "displayName": "Map Church"}],
                 "source": "Google Maps",
             },
         )
