@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 public final class SesFollowUpEmailSender implements FollowUpEmailSender {
-    private static final String SUBJECT = "Following up on your Save2Serve request";
+    private static final String SUBJECT = "Following up on your Saved2Serve request";
     private final SesV2Client sesClient;
     private final String fromAddress;
 
@@ -31,7 +31,7 @@ public final class SesFollowUpEmailSender implements FollowUpEmailSender {
     public void send(String recipientName, String recipientEmail, String unsubscribeUrl) {
         String name = recipientName == null || recipientName.isBlank() ? "there" : recipientName.trim();
         String body = "Hello " + name + ",\n\n"
-                + "We are following up on your Save2Serve request. "
+                + "We are following up on your Saved2Serve request. "
                 + "If you need help, please reply to this email.\n\n"
                 + "To stop follow-up emails, visit: " + unsubscribeUrl + "\n";
         sesClient.sendEmail(SendEmailRequest.builder()
