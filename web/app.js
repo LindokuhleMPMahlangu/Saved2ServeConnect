@@ -151,7 +151,8 @@ export function projectPublicChurches(responseBody) {
       churchId: church.churchId.trim(),
       displayName: church.displayName.trim(),
       publicWebsite: safeHttpsUrl(church.publicWebsite),
-      publicAddress: typeof church.publicAddress === "string" ? church.publicAddress.trim() : ""
+      publicAddress: typeof church.publicAddress === "string" ? church.publicAddress.trim() : "",
+      mapUrl: safeHttpsUrl(church.mapUrl)
     }));
 }
 
@@ -425,7 +426,7 @@ function renderChurches(container, churches) {
   container.className = `discovery-results ${churches.length ? "discovery-loaded" : "discovery-empty"}`;
   container.setAttribute("aria-busy", "false");
   if (churches.length === 0) {
-    setDiscoveryState(container, "empty", "No approved churches are listed for that exact area yet.");
+    setDiscoveryState(container, "empty", "No churches were found in OpenStreetMap near that area.");
     return;
   }
   const cards = document.createElement("div");
@@ -450,6 +451,15 @@ function renderChurches(container, churches) {
       website.textContent = "Visit website";
       website.setAttribute("aria-label", `Visit ${church.displayName} website (opens in a new tab)`);
       card.append(website);
+    }
+    if (church.mapUrl) {
+      const mapLink = document.createElement("a");
+      mapLink.href = church.mapUrl;
+      mapLink.target = "_blank";
+      mapLink.rel = "noopener noreferrer";
+      mapLink.textContent = "View on OpenStreetMap";
+      mapLink.setAttribute("aria-label", `View ${church.displayName} on OpenStreetMap (opens in a new tab)`);
+      card.append(mapLink);
     }
     cards.append(card);
   }
@@ -500,7 +510,7 @@ function initializeChurchDiscovery() {
       activeController.abort();
     }
     activeController = new AbortController();
-    setDiscoveryState(results, "loading", "Searching approved service-area results…");
+    setDiscoveryState(results, "loading", "Searching OpenStreetMap for nearby churches…");
     try {
       const churches = await fetchChurches(areaCode, {
         apiBaseUrl: globalThis.SAVED2SERVE_CONFIG?.apiBaseUrl ?? "",
