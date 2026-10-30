@@ -150,7 +150,7 @@ The repeatable SAM/CloudFormation stack for the implemented API, Java 21 Lambda 
 
 ## EC2 Google Maps church lookup demo
 
-The EC2 demo serves `GET /v1/churches` through its existing API process. Nominatim geocodes the submitted South African postcode or Johannesburg area, then Google Places Text Search finds churches within 5 km. Google Places content is not cached; only area coordinates from Nominatim are cached for one hour. The API key is stored only in an EC2 root-owned environment file, never in the browser or repository. The page attributes Google Maps and advises visitors to verify details. This EC2 demo is separate from the SAM API's curated, approved directory. Setup and verification are documented in [docs/ec2-google-maps-church-lookup.md](docs/ec2-google-maps-church-lookup.md).
+The EC2 demo serves `GET /v1/churches` through its existing API process. It sends a Google Places Text Search for churches near the submitted area or South African postcode, using a Johannesburg context; results are best-effort and are not restricted to an exact radius. Google Places content is not cached. The API key is stored only in an EC2 root-owned environment file, never in the browser or repository. The page attributes Google Maps and advises visitors to verify details. This EC2 demo is separate from the SAM API's curated, approved directory. Setup and verification are documented in [docs/ec2-google-maps-church-lookup.md](docs/ec2-google-maps-church-lookup.md).
 
 ## Privacy, retention, threat, and release decisions
 
