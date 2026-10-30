@@ -1,7 +1,7 @@
 # Day 20: Optional AWS credit activities
 
 These are optional learning activities, not prerequisites for the core
-Save2ServeConnect application. Start each activity from the **Explore AWS**
+Saved2Serve application. Start each activity from the **Explore AWS**
 widget in the AWS Console so AWS can record its completion and display the
 account-specific reward/status. The reward and eligibility shown there are
 authoritative. AWS credits can be consumed by eligible usage; they do not
