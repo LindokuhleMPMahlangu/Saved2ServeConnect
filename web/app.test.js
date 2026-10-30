@@ -44,6 +44,11 @@ test("demo registration confirmation clearly says the submission was not saved",
   assert.match(getInterestSuccessMessage(false), /interest has been received/);
 });
 
+test("persistent demo confirmation warns to use fictional information", () => {
+  assert.match(getInterestSuccessMessage(true, true), /saved locally on this EC2 demo/);
+  assert.match(getInterestSuccessMessage(true, true), /Do not use real information/);
+});
+
 test("creates only allowlisted form fields and keeps follow-up consent separate", () => {
   const payload = buildInterestPayload(validValues, "attempt-id");
   assert.deepEqual(payload, {
@@ -122,6 +127,32 @@ test("posts JSON to the configured API without credentials or referrer", async (
   assert.equal(request.options.credentials, "omit");
   assert.equal(request.options.referrerPolicy, "no-referrer");
   assert.deepEqual(JSON.parse(request.options.body), buildInterestPayload(validValues, "attempt-id"));
+});
+
+test("persistent demo requires an explicit saved registration response", async () => {
+  const saved = await submitInterest({ idempotencyKey: "test" }, {
+    expectDemoPersistence: true,
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        mode: "demo",
+        saved: true,
+        registrationId: "registration-id"
+      })
+    })
+  });
+  assert.equal(saved, true);
+
+  await assert.rejects(
+    submitInterest({ idempotencyKey: "test" }, {
+      expectDemoPersistence: true,
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({ mode: "demo", saved: false })
+      })
+    }),
+    /did not confirm that the registration was saved/
+  );
 });
 
 test("uses safe retry messages for API failures and network errors", async () => {
