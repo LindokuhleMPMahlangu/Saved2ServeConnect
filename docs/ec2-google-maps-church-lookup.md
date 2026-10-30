@@ -1,21 +1,20 @@
 # EC2 Google Maps church lookup demo
 
-The EC2 demo's `GET /v1/churches?areaCode=...` endpoint uses Nominatim to
-geocode a South African postcode or Johannesburg area, then calls Google Places
-Text Search for nearby churches. This demo does not use the SAM API's curated,
-approved directory and does not read or write the DynamoDB registration table.
+The EC2 demo's `GET /v1/churches?areaCode=...` endpoint sends a direct Google
+Places Text Search for churches near the submitted area or South African
+postcode, with Johannesburg, South Africa as the search context. This demo does
+not use the SAM API's curated, approved directory and does not read or write the
+DynamoDB registration table.
 
 ## Search behavior and data handling
 
-- Accepts one South African four-digit postcode or a short area name. Area
-  names are geocoded within the Johannesburg pilot context.
-- Searches for Google Places entries of type `church` and returns only results
-  within 5 km of the geocoded center.
+- Accepts one South African four-digit postcode or a short area name.
+- Searches for Google Places entries of type `church`. Results are best-effort
+  matches for "churches near [area]" and are not guaranteed to be exhaustive or
+  within a specific distance.
 - Returns the place ID, display name, formatted address, and Google Maps link.
   Place IDs are the only Google Places field exempt from Google's caching
   restrictions. Google Places search results are not cached by this service.
-- Caches area geocoding coordinates from Nominatim in memory for up to one
-  hour, and paces uncached Nominatim queries to at most one per second.
 - Sends only the area/postcode search to map providers, never registration
   details or contact information.
 - Returns generic `400` input errors and `503` provider failures. Logs include
