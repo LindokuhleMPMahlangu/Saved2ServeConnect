@@ -18,8 +18,14 @@ CHURCH_LOOKUP_CACHE_SECONDS = 3600
 CHURCH_LOOKUP_CACHE_LIMIT = 128
 CHURCH_SEARCH_RADIUS_METERS = 5000
 CHURCH_RESULT_LIMIT = 40
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+NOMINATIM_URL = os.environ.get(
+    "SAVED2SERVE_NOMINATIM_URL",
+    "https://nominatim.openstreetmap.org/search",
+)
+OVERPASS_URL = os.environ.get(
+    "SAVED2SERVE_OVERPASS_URL",
+    "https://overpass-api.de/api/interpreter",
+)
 ALLOWED_FIELDS = {
     "idempotencyKey",
     "name",
