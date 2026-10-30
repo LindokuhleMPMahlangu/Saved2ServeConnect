@@ -2,7 +2,7 @@
 
 # Saved2ServeConnect
 
-Saved2ServeConnect is a Java 21 Maven project for the privacy-first MVP foundation of the Save2Serve platform. The repository focuses on a narrow, reviewable baseline for Lambda-based serverless workflows, validation logic, CI quality checks, and consent-aware public submission rules.
+Saved2ServeConnect is a Java 21 Maven project for the privacy-first MVP foundation of the Saved2Serve platform. The repository focuses on a narrow, reviewable baseline for Lambda-based serverless workflows, validation logic, CI quality checks, and consent-aware public submission rules.
 
 > The architecture document remains in its own file under the docs folder and is intentionally not duplicated here.
 
@@ -38,11 +38,11 @@ The repository now includes immutable privacy-conscious domain records and expli
 - InterestRequest and EngagementRequest DTOs define explicit field allowlists and avoid public payload drift beyond the approved MVP schema
 - Supporting enums for engagement type and review status keep the model explicit and reviewable
 
-These records intentionally reject full residential addresses, precise coordinates, and non-consented submissions to stay within the Save2Serve MVP boundaries.
+These records intentionally reject full residential addresses, precise coordinates, and non-consented submissions to stay within the Saved2Serve MVP boundaries.
 
 ## Day 04 deliverables included
 
-This repository now includes the DynamoDB design notes for the Save2Serve MVP access patterns:
+This repository now includes the DynamoDB design notes for the Saved2Serve MVP access patterns:
 
 - single-table layout for interests and engagement records
 - primary keys, GSI definitions, and review-queue access patterns
