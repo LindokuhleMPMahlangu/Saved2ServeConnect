@@ -13,6 +13,9 @@ not use the SAM API's curated, approved church directory.
   to the OpenStreetMap object. Unnamed map objects are excluded.
 - Caches results in the API process for one hour. The cache is temporary and
   is cleared when the process restarts.
+- Tries a secondary Overpass public instance after an upstream failure. A
+  `429` or `406` response triggers a 30-second cooldown instead of an immediate
+  retry against another instance.
 - Sends only the area/postcode search to the map provider, never registration
   details or contact information.
 - Returns generic `400` input errors and `503` provider failures. Provider
@@ -33,9 +36,14 @@ one request per second. Nginx also rate-limits the public church endpoint.
 The public Nominatim server is a limited community service, not a production
 SLA. Follow its current [usage policy](https://operations.osmfoundation.org/policies/nominatim/);
 do not use it for bulk/systematic searches or submit personal/confidential
-information. For production or sustained traffic, choose an appropriate
-provider or operate a service instance and configure the endpoint URLs in the
-systemd service environment.
+information. The Overpass instances are also shared public services; their
+availability is not guaranteed. The current public instance list warns that
+free servers can be overloaded and recommends self-hosting or a commercial
+provider for higher reliability
+([Overpass API instance list](https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances)).
+For production or sustained traffic, choose an appropriate provider or operate
+a service instance and configure the comma-separated `SAVED2SERVE_OVERPASS_URLS`
+systemd environment variable.
 
 The page displays attribution to
 [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) and links
