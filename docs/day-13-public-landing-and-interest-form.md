@@ -2,7 +2,7 @@
 
 ## Scope and privacy
 
-The static public page lives in `web/`. It introduces the Save2Serve MVP,
+The static public page lives in `web/`. It introduces the Saved2Serve MVP,
 explains a simple registration flow, and provides a responsive interest form.
 The form collects name, email, and coarse area/postcode; phone and follow-up
 email permission are optional. Submission consent is required and separate
