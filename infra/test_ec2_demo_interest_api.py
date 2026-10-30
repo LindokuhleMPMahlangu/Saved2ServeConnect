@@ -7,6 +7,7 @@ from http.server import ThreadingHTTPServer
 from infra.ec2_demo_interest_api import (
     DemoIdempotencyConflict,
     DemoInterestHandler,
+    find_churches,
     save_registration,
     validate_registration,
 )
@@ -49,6 +50,11 @@ class DemoInterestApiTests(unittest.TestCase):
         cls.server.server_close()
 
     def setUp(self):
+        from infra import ec2_demo_interest_api
+
+        with ec2_demo_interest_api.CHURCH_LOOKUP_LOCK:
+            ec2_demo_interest_api.CHURCH_LOOKUP_CACHE.clear()
+            ec2_demo_interest_api.LAST_NOMINATIM_REQUEST = 0.0
         self.table = FakeDynamoTable()
         self.payload = {
             "idempotencyKey": "attempt-123",
@@ -115,6 +121,75 @@ class DemoInterestApiTests(unittest.TestCase):
         self.assertEqual(
             json.loads(body), {"status": "ok", "mode": "demo-dynamodb"}
         )
+
+    def test_church_lookup_returns_openstreetmap_results_and_caches_them(self):
+        from unittest.mock import patch
+
+        from infra import ec2_demo_interest_api
+
+        map_responses = [
+            [{"lat": "-26.2041", "lon": "28.0473"}],
+            {
+                "elements": [{
+                    "type": "node",
+                    "id": 123,
+                    "lat": -26.204,
+                    "lon": 28.047,
+                    "tags": {
+                        "name": "Fictional Test Church",
+                        "amenity": "place_of_worship",
+                        "religion": "christian",
+                        "website": "example.org",
+                        "addr:street": "Example Road",
+                        "addr:city": "Johannesburg",
+                    },
+                }]
+            },
+        ]
+        with patch.object(ec2_demo_interest_api, "_fetch_map_json", side_effect=map_responses) as fetch:
+            churches = find_churches("2001")
+            cached_churches = find_churches(" 2001 ")
+
+        self.assertEqual(churches, [{
+            "churchId": "osm:node/123",
+            "displayName": "Fictional Test Church",
+            "publicWebsite": "https://example.org",
+            "publicAddress": "Example Road, Johannesburg",
+            "mapUrl": "https://www.openstreetmap.org/node/123",
+        }])
+        self.assertEqual(cached_churches, churches)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertIn("postalcode=2001", fetch.call_args_list[0].args[0])
+        self.assertIn("countrycodes=za", fetch.call_args_list[0].args[0])
+        self.assertIn('["religion"="christian"]', fetch.call_args_list[1].args[0])
+
+    def test_church_lookup_rejects_full_addresses_and_unbounded_queries(self):
+        for area in ["", "1 Example Street, Johannesburg", "A" * 25, "2001\t"]:
+            with self.subTest(area=area):
+                with self.assertRaises(ValueError):
+                    find_churches(area)
+
+    def test_church_lookup_route_returns_map_results(self):
+        from unittest.mock import patch
+
+        with patch(
+            "infra.ec2_demo_interest_api.find_churches",
+            return_value=[{"churchId": "osm:node/123", "displayName": "Map Church"}],
+        ):
+            status, _, body = self.request("GET", "/v1/churches?areaCode=2001")
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            json.loads(body),
+            {
+                "churches": [{"churchId": "osm:node/123", "displayName": "Map Church"}],
+                "source": "OpenStreetMap",
+            },
+        )
+
+    def test_church_lookup_route_requires_only_one_area_code(self):
+        status, _, body = self.request("GET", "/v1/churches?areaCode=2001&extra=value")
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(body)["error"], "An areaCode query parameter is required.")
 
     def test_rejects_unexpected_fields(self):
         self.assertFalse(validate_registration({**self.payload, "address": "1 Example St"}))
