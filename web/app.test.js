@@ -171,7 +171,7 @@ test("uses safe retry messages for API failures and network errors", async () =>
   assert.match(getRegistrationMessage(503), /try again shortly/);
 });
 
-test("church lookup preserves the exact area code and projects only public fields", async () => {
+test("church lookup preserves the area query and projects public map fields", async () => {
   let request;
   const churches = await fetchChurches(" 00180 ", {
     apiBaseUrl: "https://api.example.org/",
@@ -185,7 +185,7 @@ test("church lookup preserves the exact area code and projects only public field
             displayName: "Community Church",
             publicWebsite: "https://church.example.org",
             publicAddress: "Approved public venue",
-            status: "APPROVED",
+            mapUrl: "https://www.openstreetmap.org/node/42",
             sourceReference: "internal-only",
             reviewerId: "reviewer-only"
           }]
@@ -200,7 +200,8 @@ test("church lookup preserves the exact area code and projects only public field
     churchId: "church-1",
     displayName: "Community Church",
     publicWebsite: "https://church.example.org/",
-    publicAddress: "Approved public venue"
+    publicAddress: "Approved public venue",
+    mapUrl: "https://www.openstreetmap.org/node/42"
   }]);
   assert.equal("sourceReference" in churches[0], false);
   assert.equal("reviewerId" in churches[0], false);
@@ -209,7 +210,13 @@ test("church lookup preserves the exact area code and projects only public field
 test("church projection excludes pending content and unsafe website URLs", () => {
   const churches = projectPublicChurches({
     churches: [
-      { churchId: "approved", displayName: "Approved", status: "APPROVED", publicWebsite: "javascript:alert(1)" },
+      {
+        churchId: "approved",
+        displayName: "Approved",
+        status: "APPROVED",
+        publicWebsite: "javascript:alert(1)",
+        mapUrl: "http://www.openstreetmap.org/node/1"
+      },
       { churchId: "pending", displayName: "Pending", status: "PENDING_REVIEW" },
       { churchId: "", displayName: "Missing identity" }
     ]
@@ -218,7 +225,8 @@ test("church projection excludes pending content and unsafe website URLs", () =>
     churchId: "approved",
     displayName: "Approved",
     publicWebsite: "",
-    publicAddress: ""
+    publicAddress: "",
+    mapUrl: ""
   }]);
 });
 
