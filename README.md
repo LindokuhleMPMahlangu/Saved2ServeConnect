@@ -148,6 +148,10 @@ The Lambda bootstrap is intentionally minimal and designed to support local and 
 
 The repeatable SAM/CloudFormation stack for the implemented API, Java 21 Lambda handlers, encrypted DynamoDB table, Cognito leader authorization, SQS follow-up queue/DLQ, and SES sender identity is defined in [infra/template.yaml](infra/template.yaml). HTTP routes share one API Lambda; SQS delivery uses a separate worker Lambda. The stack applies trigger-level IAM permissions, redacted API access logs, and explicit retention safeguards. Deployment inputs, permission review, validation commands, and privacy checks are in [docs/day-17-aws-infrastructure.md](docs/day-17-aws-infrastructure.md). No AWS resources are deployed by local tests.
 
+## EC2 map-based church lookup demo
+
+The EC2 demo serves `GET /v1/churches` through its existing API process and queries OpenStreetMap's Nominatim and Overpass services for named Christian places of worship within 5 km of a South African postcode or Johannesburg area. Results are map data, not Save2Serve-approved listings; the service caches responses for one hour and limits Nominatim requests to at most one per second. The page includes OpenStreetMap/ODbL attribution and warns visitors to verify results. This EC2 demo is separate from the SAM API's curated, approved directory. Setup, provider usage limits, and validation are documented in [docs/ec2-openstreetmap-church-lookup.md](docs/ec2-openstreetmap-church-lookup.md).
+
 ## Privacy, retention, threat, and release decisions
 
 The project keeps the MVP intentionally narrow and privacy preserving:
