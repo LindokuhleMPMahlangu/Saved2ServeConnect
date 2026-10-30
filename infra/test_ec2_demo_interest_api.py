@@ -161,10 +161,10 @@ class DemoInterestApiTests(unittest.TestCase):
         self.assertEqual(fetch.call_count, 2)
         self.assertIn("postalcode=2001", fetch.call_args_list[0].args[0])
         self.assertIn("countrycodes=za", fetch.call_args_list[0].args[0])
-        self.assertIn('["religion"="christian"]', fetch.call_args_list[1].args[0])
+        self.assertIn('["religion"="christian"]', fetch.call_args_list[1].args[1].decode("utf-8"))
 
     def test_church_lookup_rejects_full_addresses_and_unbounded_queries(self):
-        for area in ["", "1 Example Street, Johannesburg", "A" * 25, "2001\t"]:
+        for area in ["", "1 Example Street, Johannesburg", "A" * 25, "2001\t2010"]:
             with self.subTest(area=area):
                 with self.assertRaises(ValueError):
                     find_churches(area)
