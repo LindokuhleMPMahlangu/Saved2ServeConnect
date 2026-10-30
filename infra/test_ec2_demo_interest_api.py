@@ -2,7 +2,6 @@ import http.client
 import json
 import threading
 import unittest
-import urllib.error
 import urllib.parse
 from http.server import ThreadingHTTPServer
 
@@ -54,10 +53,11 @@ class DemoInterestApiTests(unittest.TestCase):
     def setUp(self):
         from infra import ec2_demo_interest_api
 
-        with ec2_demo_interest_api.CHURCH_LOOKUP_LOCK:
-            ec2_demo_interest_api.CHURCH_LOOKUP_CACHE.clear()
+        with ec2_demo_interest_api.GEOCODE_LOCK:
+            ec2_demo_interest_api.GEOCODE_CACHE.clear()
             ec2_demo_interest_api.LAST_NOMINATIM_REQUEST = 0.0
-            ec2_demo_interest_api.OVERPASS_COOLDOWN_UNTIL = 0.0
+        with ec2_demo_interest_api.GOOGLE_REQUEST_LOCK:
+            ec2_demo_interest_api.LAST_GOOGLE_REQUEST = 0.0
         self.table = FakeDynamoTable()
         self.payload = {
             "idempotencyKey": "attempt-123",
@@ -125,7 +125,7 @@ class DemoInterestApiTests(unittest.TestCase):
             json.loads(body), {"status": "ok", "mode": "demo-dynamodb"}
         )
 
-    def test_church_lookup_returns_openstreetmap_results_and_caches_them(self):
+    def test_church_lookup_queries_google_places_within_five_kilometers(self):
         from unittest.mock import patch
 
         from infra import ec2_demo_interest_api
@@ -133,39 +133,74 @@ class DemoInterestApiTests(unittest.TestCase):
         map_responses = [
             [{"lat": "-26.2041", "lon": "28.0473"}],
             {
-                "elements": [{
-                    "type": "node",
-                    "id": 123,
-                    "lat": -26.204,
-                    "lon": 28.047,
-                    "tags": {
-                        "name": "Fictional Test Church",
-                        "amenity": "place_of_worship",
-                        "religion": "christian",
-                        "website": "example.org",
-                        "addr:street": "Example Road",
-                        "addr:city": "Johannesburg",
+                "places": [
+                    {
+                        "id": "place-id",
+                        "displayName": {"text": "Fictional Test Church"},
+                        "formattedAddress": "1 Example Road, Johannesburg",
+                        "location": {"latitude": -26.204, "longitude": 28.047},
                     },
-                }]
+                    {
+                        "id": "outside",
+                        "displayName": {"text": "Outside Radius"},
+                        "formattedAddress": "Far away",
+                        "location": {"latitude": -26.27, "longitude": 28.047},
+                    },
+                ]
             },
         ]
-        with patch.object(ec2_demo_interest_api, "_fetch_map_json", side_effect=map_responses) as fetch:
-            churches = find_churches("2001")
-            cached_churches = find_churches(" 2001 ")
+        with patch.dict("os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}):
+            with patch.object(
+                ec2_demo_interest_api,
+                "_fetch_map_json",
+                side_effect=map_responses,
+            ) as fetch:
+                churches = find_churches("2001")
 
         self.assertEqual(churches, [{
-            "churchId": "osm:node/123",
+            "churchId": "google:place-id",
             "displayName": "Fictional Test Church",
-            "publicWebsite": "https://example.org",
-            "publicAddress": "Example Road, Johannesburg",
-            "mapUrl": "https://www.openstreetmap.org/node/123",
+            "publicWebsite": "",
+            "publicAddress": "1 Example Road, Johannesburg",
+            "mapUrl": "https://www.google.com/maps/search/?api=1&query_place_id=place-id",
         }])
-        self.assertEqual(cached_churches, churches)
         self.assertEqual(fetch.call_count, 2)
         self.assertIn("postalcode=2001", fetch.call_args_list[0].args[0])
         self.assertIn("countrycodes=za", fetch.call_args_list[0].args[0])
-        overpass_data = urllib.parse.parse_qs(fetch.call_args_list[1].args[1].decode("utf-8"))
-        self.assertIn('["religion"="christian"]', overpass_data["data"][0])
+        request_url, request_data, headers = fetch.call_args_list[1].args
+        self.assertEqual(request_url, ec2_demo_interest_api.GOOGLE_PLACES_URL)
+        request_body = json.loads(request_data)
+        self.assertEqual(request_body["includedType"], "church")
+        self.assertEqual(request_body["locationBias"]["circle"]["radius"], 5000)
+        self.assertEqual(headers["X-Goog-Api-Key"], "test-key")
+        self.assertNotIn("places.websiteUri", headers["X-Goog-FieldMask"])
+
+    def test_google_places_results_are_not_cached(self):
+        from unittest.mock import patch
+
+        from infra import ec2_demo_interest_api
+
+        with patch.object(
+            ec2_demo_interest_api,
+            "_find_area_location",
+            return_value=(-26.2, 28.0),
+        ), patch.object(
+            ec2_demo_interest_api,
+            "_query_churches",
+            side_effect=[[{"churchId": "google:first"}], [{"churchId": "google:second"}]],
+        ) as search:
+            self.assertEqual(find_churches("2001"), [{"churchId": "google:first"}])
+            self.assertEqual(find_churches("2001"), [{"churchId": "google:second"}])
+        self.assertEqual(search.call_count, 2)
+
+    def test_google_places_requires_server_side_api_key(self):
+        from unittest.mock import patch
+
+        from infra import ec2_demo_interest_api
+
+        with patch.dict("os.environ", {"GOOGLE_MAPS_API_KEY": ""}):
+            with self.assertRaises(ec2_demo_interest_api.ChurchLookupError):
+                ec2_demo_interest_api._query_churches(-26.2, 28.0)
 
     def test_church_lookup_rejects_full_addresses_and_unbounded_queries(self):
         for area in ["", "1 Example Street, Johannesburg", "A" * 25, "2001\t2010"]:
@@ -178,7 +213,7 @@ class DemoInterestApiTests(unittest.TestCase):
 
         with patch(
             "infra.ec2_demo_interest_api.find_churches",
-            return_value=[{"churchId": "osm:node/123", "displayName": "Map Church"}],
+            return_value=[{"churchId": "google:place-123", "displayName": "Map Church"}],
         ):
             status, _, body = self.request("GET", "/v1/churches?areaCode=2001")
         self.assertEqual(status, 200)
@@ -186,7 +221,7 @@ class DemoInterestApiTests(unittest.TestCase):
             json.loads(body),
             {
                 "churches": [{"churchId": "osm:node/123", "displayName": "Map Church"}],
-                "source": "OpenStreetMap",
+                "source": "Google Maps",
             },
         )
 
@@ -194,52 +229,6 @@ class DemoInterestApiTests(unittest.TestCase):
         status, _, body = self.request("GET", "/v1/churches?areaCode=2001&extra=value")
         self.assertEqual(status, 400)
         self.assertEqual(json.loads(body)["error"], "An areaCode query parameter is required.")
-
-    def test_overpass_504_fails_over_to_secondary_instance(self):
-        from unittest.mock import patch
-
-        from infra import ec2_demo_interest_api
-
-        response = {"elements": []}
-        timeout = urllib.error.HTTPError(
-            "https://overpass-api.de/api/interpreter",
-            504,
-            "Gateway Timeout",
-            {},
-            None,
-        )
-        with patch.object(
-            ec2_demo_interest_api,
-            "_fetch_map_json",
-            side_effect=[timeout, response],
-        ) as fetch:
-            self.assertEqual(ec2_demo_interest_api._query_churches(-26.2, 28.0), [])
-        self.assertEqual(fetch.call_count, 2)
-        self.assertIn("overpass.private.coffee", fetch.call_args_list[1].args[0])
-
-    def test_overpass_rate_limit_honors_cooldown_without_failing_over(self):
-        from unittest.mock import patch
-
-        from infra import ec2_demo_interest_api
-
-        limited = urllib.error.HTTPError(
-            "https://overpass-api.de/api/interpreter",
-            429,
-            "Too Many Requests",
-            {},
-            None,
-        )
-        with patch.object(
-            ec2_demo_interest_api,
-            "_fetch_map_json",
-            side_effect=limited,
-        ) as fetch:
-            with self.assertRaises(ec2_demo_interest_api.ChurchLookupError):
-                ec2_demo_interest_api._query_churches(-26.2, 28.0)
-            self.assertEqual(fetch.call_count, 1)
-            with self.assertRaises(ec2_demo_interest_api.ChurchLookupError):
-                ec2_demo_interest_api._query_churches(-26.2, 28.0)
-            self.assertEqual(fetch.call_count, 1)
 
     def test_rejects_unexpected_fields(self):
         self.assertFalse(validate_registration({**self.payload, "address": "1 Example St"}))
