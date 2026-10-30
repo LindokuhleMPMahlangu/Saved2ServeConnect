@@ -351,7 +351,7 @@ function initializeInterestForm() {
     try {
       await submitInterest(payload, {
         apiBaseUrl: globalThis.SAVED2SERVE_CONFIG?.apiBaseUrl ?? "",
-        expectDemoPersistence
+        expectDemoPersistence: demoPersistence
       });
       form.reset();
       clearFieldErrors();
