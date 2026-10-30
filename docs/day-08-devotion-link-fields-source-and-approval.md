@@ -30,7 +30,7 @@ URL validation does not imply content approval.
 | `reviewedBy` | Required for approval | Internal authorized reviewer identifier; never expose publicly. |
 | `reviewNote` | Optional | Internal, non-sensitive explanation for rejection or follow-up; never expose publicly. |
 
-The YouTube item itself remains hosted by its publisher. Save2Serve stores and
+The YouTube item itself remains hosted by its publisher. Saved2Serve stores and
 displays a link and its minimal reviewed metadata; it does not download, copy,
 rehost, or alter third-party media.
 
