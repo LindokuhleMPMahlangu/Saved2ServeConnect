@@ -14,23 +14,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 MAX_BODY_BYTES = 16 * 1024
-CHURCH_LOOKUP_CACHE_SECONDS = 3600
-CHURCH_LOOKUP_CACHE_LIMIT = 128
+GEOCODE_CACHE_SECONDS = 3600
+GEOCODE_CACHE_LIMIT = 128
 CHURCH_SEARCH_RADIUS_METERS = 5000
-CHURCH_RESULT_LIMIT = 40
+CHURCH_RESULT_LIMIT = 20
 NOMINATIM_URL = os.environ.get(
     "SAVED2SERVE_NOMINATIM_URL",
     "https://nominatim.openstreetmap.org/search",
 )
-OVERPASS_URLS = tuple(
-    url.strip()
-    for url in os.environ.get(
-        "SAVED2SERVE_OVERPASS_URLS",
-        "https://overpass-api.de/api/interpreter,"
-        "https://overpass.private.coffee/api/interpreter",
-    ).split(",")
-    if url.strip()
-)
+GOOGLE_PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
 ALLOWED_FIELDS = {
     "idempotencyKey",
     "name",
@@ -44,10 +36,9 @@ ALLOWED_FIELDS = {
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 ALLOWED_SOURCES = {"landing-page", "campaign-qr:community-outreach"}
 LOGGER = logging.getLogger("saved2serve.demo")
-CHURCH_LOOKUP_LOCK = threading.RLock()
-CHURCH_LOOKUP_CACHE = {}
+GEOCODE_LOCK = threading.Lock()
+GEOCODE_CACHE = {}
 LAST_NOMINATIM_REQUEST = 0.0
-OVERPASS_COOLDOWN_UNTIL = 0.0
 
 
 class DemoIdempotencyConflict(Exception):
@@ -141,22 +132,31 @@ class ChurchLookupError(Exception):
     pass
 
 
-def _fetch_map_json(url, data=None):
+def _fetch_map_json(url, data=None, headers=None):
+    request_headers = {
+        "Accept": "application/json",
+        "User-Agent": "Saved2ServeConnect/0.1 (public church lookup demo)",
+    }
+    if headers:
+        request_headers.update(headers)
     request = urllib.request.Request(
         url,
         data=data,
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "Saved2ServeConnect/0.1 (public church lookup demo)",
-        },
+        headers=request_headers,
         method="POST" if data is not None else "GET",
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
+    with urllib.request.urlopen(request, timeout=20) as response:
         return json.loads(response.read())
 
 
 def _find_area_location(area):
     global LAST_NOMINATIM_REQUEST
+
+    cache_key = area.casefold()
+    with GEOCODE_LOCK:
+        cached = GEOCODE_CACHE.get(cache_key)
+        if cached and time.monotonic() - cached[0] < GEOCODE_CACHE_SECONDS:
+            return cached[1]
 
     params = {
         "format": "jsonv2",
@@ -169,7 +169,10 @@ def _find_area_location(area):
     else:
         params["q"] = f"{area}, Johannesburg, South Africa"
 
-    with CHURCH_LOOKUP_LOCK:
+    with GEOCODE_LOCK:
+        cached = GEOCODE_CACHE.get(cache_key)
+        if cached and time.monotonic() - cached[0] < GEOCODE_CACHE_SECONDS:
+            return cached[1]
         delay = 1.0 - (time.monotonic() - LAST_NOMINATIM_REQUEST)
         if delay > 0:
             time.sleep(delay)
@@ -185,94 +188,102 @@ def _find_area_location(area):
         raise ChurchLookupError("Map service returned an invalid location.")
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         raise ChurchLookupError("Map service returned an invalid location.")
-    return latitude, longitude
+    location = (latitude, longitude)
+    GEOCODE_CACHE[cache_key] = (time.monotonic(), location)
+    if len(GEOCODE_CACHE) > GEOCODE_CACHE_LIMIT:
+        oldest_key = min(key for key in GEOCODE_CACHE if GEOCODE_CACHE[key][0])
+        del GEOCODE_CACHE[oldest_key]
+    return location
 
 
-def _church_address(tags):
-    if tags.get("addr:full"):
-        return tags["addr:full"].strip()[:240]
-    parts = [
-        " ".join(part for part in (tags.get("addr:housenumber"), tags.get("addr:street")) if part),
-        tags.get("addr:suburb") or tags.get("addr:city"),
-        tags.get("addr:postcode"),
-    ]
-    return ", ".join(part.strip() for part in parts if part and part.strip())[:240]
+def _distance_meters(first, second):
+    from math import asin, cos, radians, sin, sqrt
+
+    latitude1, longitude1 = map(radians, first)
+    latitude2, longitude2 = map(radians, second)
+    latitude_delta = latitude2 - latitude1
+    longitude_delta = longitude2 - longitude1
+    haversine = (
+        sin(latitude_delta / 2) ** 2
+        + cos(latitude1) * cos(latitude2) * sin(longitude_delta / 2) ** 2
+    )
+    return 6_371_000 * 2 * asin(sqrt(haversine))
 
 
-def _https_website(tags):
-    value = (tags.get("website") or tags.get("contact:website") or "").strip()
-    if not value:
-        return ""
-    if not value.startswith(("https://", "http://")):
-        value = "https://" + value
-    try:
-        parsed = urllib.parse.urlsplit(value)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-            return ""
-        return value[:500]
-    except ValueError:
-        return ""
+def _google_maps_url(place_id):
+    return "https://www.google.com/maps/search/?api=1&query_place_id=" + urllib.parse.quote(
+        place_id, safe=""
+    )
 
 
 def _query_churches(latitude, longitude):
-    global OVERPASS_COOLDOWN_UNTIL
+    api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
+    if not api_key:
+        raise ChurchLookupError("Google Maps API key is not configured.")
 
-    query = (
-        "[out:json][timeout:15];"
-        "("
-        f'nwr(around:{CHURCH_SEARCH_RADIUS_METERS},{latitude:.6f},{longitude:.6f})'
-        '["amenity"="place_of_worship"]["religion"="christian"];'
-        ");out center tags 60;"
+    request_body = {
+        "textQuery": "church",
+        "includedType": "church",
+        "strictTypeFiltering": True,
+        "maxResultCount": CHURCH_RESULT_LIMIT,
+        "locationBias": {
+            "circle": {
+                "center": {"latitude": latitude, "longitude": longitude},
+                "radius": CHURCH_SEARCH_RADIUS_METERS,
+            }
+        },
+        "languageCode": "en",
+        "regionCode": "ZA",
+    }
+    data = json.dumps(request_body).encode("utf-8")
+    response = _fetch_map_json(
+        GOOGLE_PLACES_URL,
+        data,
+        {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": api_key,
+            "X-Goog-FieldMask": (
+                "places.id,places.displayName,places.formattedAddress,"
+                "places.googleMapsUri,places.location"
+            ),
+        },
     )
-    data = urllib.parse.urlencode({"data": query}).encode("utf-8")
-    if time.monotonic() < OVERPASS_COOLDOWN_UNTIL:
-        raise ChurchLookupError("Map provider is cooling down after a rate limit.")
-    response = None
-    for instance_number, url in enumerate(OVERPASS_URLS, start=1):
-        try:
-            response = _fetch_map_json(url, data)
-            break
-        except urllib.error.HTTPError as error:
-            LOGGER.warning(
-                "DEMO_CHURCH_OVERPASS_FAILED instance=%d status=%d",
-                instance_number,
-                error.code,
-            )
-            if error.code in {406, 429}:
-                OVERPASS_COOLDOWN_UNTIL = time.monotonic() + 30
-                raise ChurchLookupError("Map provider is cooling down after a rate limit.") from error
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
-            LOGGER.warning(
-                "DEMO_CHURCH_OVERPASS_FAILED instance=%d type=%s",
-                instance_number,
-                type(error).__name__,
-            )
-    if response is None:
-        raise ChurchLookupError("No map search instance returned a response.")
-    if not isinstance(response, dict) or not isinstance(response.get("elements"), list):
-        raise ChurchLookupError("Map service returned an invalid church list.")
+    if not isinstance(response, dict) or not isinstance(response.get("places", []), list):
+        raise ChurchLookupError("Google Maps returned an invalid church list.")
 
     churches = []
-    for element in response["elements"]:
-        if not isinstance(element, dict) or not isinstance(element.get("tags"), dict):
+    for place in response.get("places", []):
+        if not isinstance(place, dict):
             continue
-        tags = element["tags"]
-        name = tags.get("name")
-        if not isinstance(name, str) or not name.strip():
+        place_id = place.get("id")
+        display_name = place.get("displayName")
+        location = place.get("location")
+        if (not isinstance(place_id, str) or not place_id
+                or not isinstance(display_name, dict)
+                or not isinstance(display_name.get("text"), str)
+                or not isinstance(location, dict)):
             continue
-        element_type = element.get("type")
-        element_id = element.get("id")
-        if element_type not in {"node", "way", "relation"} or not isinstance(element_id, int):
+        try:
+            place_location = (
+                float(location["latitude"]),
+                float(location["longitude"]),
+            )
+        except (KeyError, TypeError, ValueError):
             continue
+        if (_distance_meters((latitude, longitude), place_location)
+                > CHURCH_SEARCH_RADIUS_METERS):
+            continue
+        map_url = place.get("googleMapsUri")
+        if not isinstance(map_url, str) or not map_url.startswith("https://www.google.com/maps/"):
+            map_url = _google_maps_url(place_id)
+        address = place.get("formattedAddress")
         churches.append({
-            "churchId": f"osm:{element_type}/{element_id}",
-            "displayName": name.strip()[:160],
-            "publicWebsite": _https_website(tags),
-            "publicAddress": _church_address(tags),
-            "mapUrl": f"https://www.openstreetmap.org/{element_type}/{element_id}",
+            "churchId": f"google:{place_id}",
+            "displayName": display_name["text"].strip()[:160],
+            "publicWebsite": "",
+            "publicAddress": address.strip()[:240] if isinstance(address, str) else "",
+            "mapUrl": map_url,
         })
-        if len(churches) == CHURCH_RESULT_LIMIT:
-            break
     return churches
 
 
@@ -283,18 +294,8 @@ def find_churches(area):
     if (not area or len(area) > 24
             or any(not (character.isalnum() or character in " -'.") for character in area)):
         raise ValueError("Enter an area name or postcode using letters and numbers.")
-    cache_key = area.casefold()
-    with CHURCH_LOOKUP_LOCK:
-        cached = CHURCH_LOOKUP_CACHE.get(cache_key)
-        if cached and time.monotonic() - cached[0] < CHURCH_LOOKUP_CACHE_SECONDS:
-            return cached[1]
-        location = _find_area_location(area)
-        churches = [] if location is None else _query_churches(*location)
-        CHURCH_LOOKUP_CACHE[cache_key] = (time.monotonic(), churches)
-        if len(CHURCH_LOOKUP_CACHE) > CHURCH_LOOKUP_CACHE_LIMIT:
-            oldest_key = min(CHURCH_LOOKUP_CACHE, key=lambda key: CHURCH_LOOKUP_CACHE[key][0])
-            del CHURCH_LOOKUP_CACHE[oldest_key]
-        return churches
+    location = _find_area_location(area)
+    return [] if location is None else _query_churches(*location)
 
 
 class DemoInterestHandler(BaseHTTPRequestHandler):
@@ -330,7 +331,7 @@ class DemoInterestHandler(BaseHTTPRequestHandler):
                 )
                 self.send_json(503, {"error": "The map search service is unavailable."})
                 return
-            self.send_json(200, {"churches": churches, "source": "OpenStreetMap"})
+            self.send_json(200, {"churches": churches, "source": "Google Maps"})
             return
         self.send_json(404, {"error": "Not found."})
 
