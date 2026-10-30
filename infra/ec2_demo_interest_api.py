@@ -4,7 +4,6 @@ import re
 import hashlib
 import logging
 import os
-import re
 import threading
 import time
 import urllib.parse
