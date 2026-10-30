@@ -4,7 +4,7 @@ Prepared for review on 2026-10-11.
 
 ## Goal
 
-Define a DynamoDB design for the Save2Serve MVP that keeps the public surface minimal, supports admin review flows, and respects the privacy boundaries already used by the Java model and validation rules.
+Define a DynamoDB design for the Saved2Serve MVP that keeps the public surface minimal, supports admin review flows, and respects the privacy boundaries already used by the Java model and validation rules.
 
 ## Design principles
 
@@ -14,7 +14,7 @@ Define a DynamoDB design for the Save2Serve MVP that keeps the public surface mi
 - Hash personally identifying values such as email before using them in lookup keys.
 - Keep submissions in a pending-review state until an admin approves or rejects them.
 
-## Table: Save2ServeRecords
+## Table: Saved2ServeRecords
 
 The table stores all public and admin-facing records in one place.
 
