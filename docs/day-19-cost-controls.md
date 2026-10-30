@@ -13,7 +13,7 @@ limit service usage.
 This is an account-level budget: costs from other workloads in the same AWS
 account contribute to it. Prefer a dedicated MVP account. If the account is
 shared, set a threshold that accounts for all workloads and review the
-account-wide impact rather than interpreting it as Save2Serve-only spend.
+account-wide impact rather than interpreting it as Saved2Serve-only spend.
 
 AWS Budgets is provisioned separately in **US East (N. Virginia), `us-east-1`**.
 The budget service and its SNS topic must be created in that billing region,
