@@ -7,6 +7,7 @@ import os
 import threading
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,9 +22,14 @@ NOMINATIM_URL = os.environ.get(
     "SAVED2SERVE_NOMINATIM_URL",
     "https://nominatim.openstreetmap.org/search",
 )
-OVERPASS_URL = os.environ.get(
-    "SAVED2SERVE_OVERPASS_URL",
-    "https://overpass-api.de/api/interpreter",
+OVERPASS_URLS = tuple(
+    url.strip()
+    for url in os.environ.get(
+        "SAVED2SERVE_OVERPASS_URLS",
+        "https://overpass-api.de/api/interpreter,"
+        "https://overpass.private.coffee/api/interpreter",
+    ).split(",")
+    if url.strip()
 )
 ALLOWED_FIELDS = {
     "idempotencyKey",
@@ -41,6 +47,7 @@ LOGGER = logging.getLogger("saved2serve.demo")
 CHURCH_LOOKUP_LOCK = threading.RLock()
 CHURCH_LOOKUP_CACHE = {}
 LAST_NOMINATIM_REQUEST = 0.0
+OVERPASS_COOLDOWN_UNTIL = 0.0
 
 
 class DemoIdempotencyConflict(Exception):
@@ -208,6 +215,8 @@ def _https_website(tags):
 
 
 def _query_churches(latitude, longitude):
+    global OVERPASS_COOLDOWN_UNTIL
+
     query = (
         "[out:json][timeout:15];"
         "("
@@ -216,7 +225,30 @@ def _query_churches(latitude, longitude):
         ");out center tags 60;"
     )
     data = urllib.parse.urlencode({"data": query}).encode("utf-8")
-    response = _fetch_map_json(OVERPASS_URL, data)
+    if time.monotonic() < OVERPASS_COOLDOWN_UNTIL:
+        raise ChurchLookupError("Map provider is cooling down after a rate limit.")
+    response = None
+    for instance_number, url in enumerate(OVERPASS_URLS, start=1):
+        try:
+            response = _fetch_map_json(url, data)
+            break
+        except urllib.error.HTTPError as error:
+            LOGGER.warning(
+                "DEMO_CHURCH_OVERPASS_FAILED instance=%d status=%d",
+                instance_number,
+                error.code,
+            )
+            if error.code in {406, 429}:
+                OVERPASS_COOLDOWN_UNTIL = time.monotonic() + 30
+                raise ChurchLookupError("Map provider is cooling down after a rate limit.") from error
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+            LOGGER.warning(
+                "DEMO_CHURCH_OVERPASS_FAILED instance=%d type=%s",
+                instance_number,
+                type(error).__name__,
+            )
+    if response is None:
+        raise ChurchLookupError("No map search instance returned a response.")
     if not isinstance(response, dict) or not isinstance(response.get("elements"), list):
         raise ChurchLookupError("Map service returned an invalid church list.")
 
