@@ -33,6 +33,10 @@ button, input { font: inherit; }
   width: min(1180px, calc(100% - 64px)); height: 88px; margin: 0 auto;
   display: flex; align-items: center; justify-content: space-between;
 }
+.demo-mode-banner {
+  margin: 0; padding: 12px 24px; color: #573d0d; background: #fff2cc;
+  text-align: center; font-size: 14px; font-weight: 650;
+}
 .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand-mark { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 13px; background: var(--green); }
 .brand-mark svg { width: 31px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
