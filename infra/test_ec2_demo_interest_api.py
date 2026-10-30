@@ -2,6 +2,7 @@ import http.client
 import json
 import threading
 import unittest
+import urllib.error
 import urllib.parse
 from http.server import ThreadingHTTPServer
 
@@ -56,6 +57,7 @@ class DemoInterestApiTests(unittest.TestCase):
         with ec2_demo_interest_api.CHURCH_LOOKUP_LOCK:
             ec2_demo_interest_api.CHURCH_LOOKUP_CACHE.clear()
             ec2_demo_interest_api.LAST_NOMINATIM_REQUEST = 0.0
+            ec2_demo_interest_api.OVERPASS_COOLDOWN_UNTIL = 0.0
         self.table = FakeDynamoTable()
         self.payload = {
             "idempotencyKey": "attempt-123",
@@ -192,6 +194,52 @@ class DemoInterestApiTests(unittest.TestCase):
         status, _, body = self.request("GET", "/v1/churches?areaCode=2001&extra=value")
         self.assertEqual(status, 400)
         self.assertEqual(json.loads(body)["error"], "An areaCode query parameter is required.")
+
+    def test_overpass_504_fails_over_to_secondary_instance(self):
+        from unittest.mock import patch
+
+        from infra import ec2_demo_interest_api
+
+        response = {"elements": []}
+        timeout = urllib.error.HTTPError(
+            "https://overpass-api.de/api/interpreter",
+            504,
+            "Gateway Timeout",
+            {},
+            None,
+        )
+        with patch.object(
+            ec2_demo_interest_api,
+            "_fetch_map_json",
+            side_effect=[timeout, response],
+        ) as fetch:
+            self.assertEqual(ec2_demo_interest_api._query_churches(-26.2, 28.0), [])
+        self.assertEqual(fetch.call_count, 2)
+        self.assertIn("overpass.private.coffee", fetch.call_args_list[1].args[0])
+
+    def test_overpass_rate_limit_honors_cooldown_without_failing_over(self):
+        from unittest.mock import patch
+
+        from infra import ec2_demo_interest_api
+
+        limited = urllib.error.HTTPError(
+            "https://overpass-api.de/api/interpreter",
+            429,
+            "Too Many Requests",
+            {},
+            None,
+        )
+        with patch.object(
+            ec2_demo_interest_api,
+            "_fetch_map_json",
+            side_effect=limited,
+        ) as fetch:
+            with self.assertRaises(ec2_demo_interest_api.ChurchLookupError):
+                ec2_demo_interest_api._query_churches(-26.2, 28.0)
+            self.assertEqual(fetch.call_count, 1)
+            with self.assertRaises(ec2_demo_interest_api.ChurchLookupError):
+                ec2_demo_interest_api._query_churches(-26.2, 28.0)
+            self.assertEqual(fetch.call_count, 1)
 
     def test_rejects_unexpected_fields(self):
         self.assertFalse(validate_registration({**self.payload, "address": "1 Example St"}))
