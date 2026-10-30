@@ -148,9 +148,9 @@ The Lambda bootstrap is intentionally minimal and designed to support local and 
 
 The repeatable SAM/CloudFormation stack for the implemented API, Java 21 Lambda handlers, encrypted DynamoDB table, Cognito leader authorization, SQS follow-up queue/DLQ, and SES sender identity is defined in [infra/template.yaml](infra/template.yaml). HTTP routes share one API Lambda; SQS delivery uses a separate worker Lambda. The stack applies trigger-level IAM permissions, redacted API access logs, and explicit retention safeguards. Deployment inputs, permission review, validation commands, and privacy checks are in [docs/day-17-aws-infrastructure.md](docs/day-17-aws-infrastructure.md). No AWS resources are deployed by local tests.
 
-## EC2 map-based church lookup demo
+## EC2 Google Maps church lookup demo
 
-The EC2 demo serves `GET /v1/churches` through its existing API process and queries OpenStreetMap's Nominatim and Overpass services for named Christian places of worship within 5 km of a South African postcode or Johannesburg area. Results are map data, not Save2Serve-approved listings; the service caches responses for one hour, limits Nominatim requests to at most one per second, and can fail over to a secondary Overpass instance when the primary is unavailable. The page includes OpenStreetMap/ODbL attribution and warns visitors to verify results. This EC2 demo is separate from the SAM API's curated, approved directory. Setup, provider usage limits, and validation are documented in [docs/ec2-openstreetmap-church-lookup.md](docs/ec2-openstreetmap-church-lookup.md).
+The EC2 demo serves `GET /v1/churches` through its existing API process. Nominatim geocodes the submitted South African postcode or Johannesburg area, then Google Places Text Search finds churches within 5 km. Google Places content is not cached; only area coordinates from Nominatim are cached for one hour. The API key is stored only in an EC2 root-owned environment file, never in the browser or repository. The page attributes Google Maps and advises visitors to verify details. This EC2 demo is separate from the SAM API's curated, approved directory. Setup and verification are documented in [docs/ec2-google-maps-church-lookup.md](docs/ec2-google-maps-church-lookup.md).
 
 ## Privacy, retention, threat, and release decisions
 
