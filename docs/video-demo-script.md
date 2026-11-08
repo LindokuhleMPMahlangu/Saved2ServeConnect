@@ -7,9 +7,9 @@
 
 **[Show the public Saved2Serve website.]**
 
-“Hi, and welcome. In this video, I’ll introduce Saved2Serve, explain what the application is designed to do, and demonstrate the parts that are currently working in the live demo.
+“Hi, and welcome. In this video, I’ll introduce Saved2ServeConnect, explain what the application is designed to do, and demonstrate the parts that are currently working in the live demo.
 
-Saved2Serve is intended to help people find a starting point for community support. I’ll show the church search, submit a fictional interest registration, and explain how the demo connects the website to services such as EC2 and DynamoDB.
+Saved2ServeConnect is intended to help people find a starting point for community support. I’ll show the church search, submit a fictional interest registration, and explain how the demo connects the website to services such as EC2 and DynamoDB.
 
 I’ll also point out an important distinction: the live demonstration is one working deployment path, while the repository contains a broader Java and AWS architecture that is not all deployed as part of this demo.”
 
