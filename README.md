@@ -1,4 +1,4 @@
-# WTC-XSL4Q48K
+ WTC-XSL4Q48K
 
 # Saved2ServeConnect
 
@@ -151,6 +151,26 @@ The repeatable SAM/CloudFormation stack for the implemented API, Java 21 Lambda 
 ## EC2 Google Maps church lookup demo
 
 The EC2 demo serves `GET /v1/churches` through its existing API process. It sends a Google Places Text Search for churches near the submitted area or South African postcode, using a Johannesburg context; results are best-effort and are not restricted to an exact radius. Google Places content is not cached. The API key is stored only in an EC2 root-owned environment file, never in the browser or repository. The page attributes Google Maps and advises visitors to verify details. This EC2 demo is separate from the SAM API's curated, approved directory. Setup and verification are documented in [docs/ec2-google-maps-church-lookup.md](docs/ec2-google-maps-church-lookup.md).
+
+### Opening the current public demo
+
+The site was reachable for the November 12, 2026 demonstration at
+[https://bias-aluminum-respect-enemies.trycloudflare.com](https://bias-aluminum-respect-enemies.trycloudflare.com).
+This is a temporary Cloudflare Quick Tunnel URL and may stop working when its
+`cloudflared` process exits. To create a new URL, connect to the EC2 instance
+with EC2 Instance Connect and run:
+
+```bash
+cloudflared tunnel --url http://localhost:80
+```
+
+Keep that terminal session open while presenting. Cloudflare prints the current
+public HTTPS URL when the tunnel starts; use that URL if it differs from the
+one above. On the last check, the site loaded but still showed the older
+“Save2Serve” branding, so the latest “Saved2Serve” website files need to be
+deployed to EC2 before recording the final branded version. The website files
+are in [web/](web/) and the EC2 setup is described in
+[docs/day-13-public-landing-and-interest-form.md](docs/day-13-public-landing-and-interest-form.md).
 
 ## Privacy, retention, threat, and release decisions
 
